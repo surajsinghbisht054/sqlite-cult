@@ -364,9 +364,46 @@ class SQLiteManager:
         
         with SQLiteManager.get_connection(db_name) as conn:
             cursor = conn.cursor()
-            for row in data:
-                values = [row.get(col) for col in columns]
-                cursor.execute(sql, values)
+            
+            # Get table schema for better error messages
+            schema = {}
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            for col_info in cursor.fetchall():
+                schema[col_info[1]] = col_info[2]  # column name -> type
+            
+            for row_num, row in enumerate(data, start=2):  # Start at 2 (1 is header)
+                try:
+                    values = [row.get(col) for col in columns]
+                    cursor.execute(sql, values)
+                except Exception as e:
+                    error_msg = str(e)
+                    
+                    # Build detailed error message
+                    details = [f"Row {row_num}:"]
+                    
+                    # Show the problematic row data
+                    row_data = []
+                    for i, col in enumerate(columns):
+                        value = row.get(col, '')
+                        if len(value) > 50:
+                            value = value[:47] + '...'
+                        row_data.append(f"{col}='{value}'")
+                    details.append(f"  Data: {{{', '.join(row_data)}}}")
+                    
+                    # Show expected column types
+                    if 'datatype mismatch' in error_msg.lower():
+                        type_info = []
+                        for col in columns:
+                            if col in schema:
+                                type_info.append(f"{col} ({schema[col]})")
+                            else:
+                                type_info.append(f"{col} (unknown)")
+                        details.append(f"  Expected types: {', '.join(type_info)}")
+                    
+                    details.append(f"  Database error: {error_msg}")
+                    
+                    raise Exception('\n'.join(details))
+            
             conn.commit()
         
         return len(data)

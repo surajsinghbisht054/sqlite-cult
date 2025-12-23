@@ -390,9 +390,16 @@ select.form-input {
     margin-bottom: 0.5rem;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     animation: slideIn 0.3s ease;
     box-shadow: var(--shadow-sm);
+}
+
+.message-text {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 @keyframes slideIn {

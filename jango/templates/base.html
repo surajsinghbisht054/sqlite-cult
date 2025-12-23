@@ -71,7 +71,7 @@
     <div class="messages-container">
         {% for message in messages %}
         <div class="message message-{{ message.tags }}" onclick="this.remove()">
-            <span>{{ message }}</span>
+            <span class="message-text">{{ message|linebreaksbr }}</span>
             <button class="message-close">&times;</button>
         </div>
         {% endfor %}
