@@ -797,6 +797,7 @@ class CreateChartView(LoginRequiredMixin, View):
         return render(request, 'dashboard/create_chart.html', {
             'databases': databases,
             'chart_types': DashboardChart.CHART_TYPES,
+            'refresh_choices': DashboardChart.REFRESH_CHOICES,
             'dashboards': dashboards,
             'selected_dashboard': dashboard,
         })
@@ -806,6 +807,7 @@ class CreateChartView(LoginRequiredMixin, View):
         database_name = request.POST.get('database_name', '').strip()
         query = request.POST.get('query', '').strip()
         chart_type = request.POST.get('chart_type', 'bar')
+        auto_refresh = int(request.POST.get('auto_refresh', 0))
         dashboard_id = request.POST.get('dashboard_id', '').strip()
         
         if not all([title, database_name, query]):
@@ -825,7 +827,8 @@ class CreateChartView(LoginRequiredMixin, View):
                 title=title,
                 database_name=database_name,
                 query=query,
-                chart_type=chart_type
+                chart_type=chart_type,
+                auto_refresh=auto_refresh
             )
             messages.success(request, f'Chart "{title}" created successfully.')
             return redirect('dashboard_detail', dashboard_id=dashboard.id)
@@ -847,6 +850,7 @@ class EditChartView(LoginRequiredMixin, View):
             'chart': chart,
             'databases': databases,
             'chart_types': DashboardChart.CHART_TYPES,
+            'refresh_choices': DashboardChart.REFRESH_CHOICES,
             'dashboards': dashboards,
         })
     
@@ -860,6 +864,7 @@ class EditChartView(LoginRequiredMixin, View):
         chart.database_name = request.POST.get('database_name', '').strip()
         chart.query = request.POST.get('query', '').strip()
         chart.chart_type = request.POST.get('chart_type', 'bar')
+        chart.auto_refresh = int(request.POST.get('auto_refresh', 0))
         dashboard_id = request.POST.get('dashboard_id', '').strip()
         
         if dashboard_id:
@@ -931,7 +936,39 @@ class ChartDataView(LoginRequiredMixin, View):
                 'success': True,
                 'title': chart.title,
                 'chart_type': chart.chart_type,
+                'auto_refresh': chart.auto_refresh,
                 'columns': result['columns'],
                 'data': result['data']
             })
         return JsonResponse({'error': result['error']}, status=400)
+
+
+class DatabaseSchemaAPIView(LoginRequiredMixin, View):
+    """Get all tables and their columns for a database (for chart query helper)."""
+    def get(self, request, db_name):
+        try:
+            if not SQLiteManager.database_exists(db_name):
+                return JsonResponse({'error': 'Database not found'}, status=404)
+            
+            tables = SQLiteManager.get_tables(db_name)
+            schema = {}
+            
+            for table in tables:
+                columns_info = SQLiteManager.get_table_info(db_name, table)
+                schema[table] = [
+                    {
+                        'name': col[1],
+                        'type': col[2],
+                        'nullable': not col[3],
+                        'pk': bool(col[5])
+                    }
+                    for col in columns_info
+                ]
+            
+            return JsonResponse({
+                'success': True,
+                'database': db_name,
+                'tables': schema
+            })
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)

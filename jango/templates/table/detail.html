@@ -35,9 +35,26 @@
     </div>
 </div>
 
-<div class="split-layout">
+<div class="split-layout" id="split-layout">
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="9" y1="3" x2="9" y2="21"></line>
+        </svg>
+    </button>
+
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title">Table Options</span>
+            <button class="btn-icon" onclick="toggleSidebar()" title="Collapse sidebar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="11 17 6 12 11 7"></polyline>
+                    <polyline points="18 17 13 12 18 7"></polyline>
+                </svg>
+            </button>
+        </div>
         <!-- Schema -->
         <div class="card mb-2">
             <div class="card-header">
@@ -523,6 +540,29 @@
 </div>
 
 <script>
+// Sidebar Toggle
+const SIDEBAR_KEY = 'sqlitecult_sidebar_collapsed';
+
+function toggleSidebar() {
+    const layout = document.getElementById('split-layout');
+    const sidebar = document.getElementById('sidebar');
+    const toggle = document.getElementById('sidebar-toggle');
+    
+    layout.classList.toggle('sidebar-collapsed');
+    
+    // Save state
+    const isCollapsed = layout.classList.contains('sidebar-collapsed');
+    localStorage.setItem(SIDEBAR_KEY, isCollapsed ? 'true' : 'false');
+}
+
+// Restore sidebar state on load
+(function() {
+    const isCollapsed = localStorage.getItem(SIDEBAR_KEY) === 'true';
+    if (isCollapsed) {
+        document.getElementById('split-layout').classList.add('sidebar-collapsed');
+    }
+})();
+
 function switchBulkTab(tab) {
     document.getElementById('bulk-add-tab').style.display = tab === 'add' ? 'block' : 'none';
     document.getElementById('bulk-drop-tab').style.display = tab === 'drop' ? 'block' : 'none';

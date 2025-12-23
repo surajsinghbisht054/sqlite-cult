@@ -50,6 +50,69 @@
     border-radius: var(--border-radius-sm);
     margin-top: 0.5rem;
 }
+/* Schema Reference Styles */
+.schema-reference {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    padding: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+}
+.schema-table {
+    margin-bottom: 0.5rem;
+}
+.schema-table-name {
+    font-weight: 600;
+    color: var(--color-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0;
+}
+.schema-table-name:hover {
+    color: var(--color-primary-hover);
+}
+.schema-columns {
+    display: none;
+    padding-left: 1rem;
+    margin-top: 0.25rem;
+}
+.schema-columns.expanded {
+    display: block;
+}
+.schema-column {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.125rem 0;
+    color: var(--color-text);
+    cursor: pointer;
+    display: flex;
+    gap: 0.5rem;
+}
+.schema-column:hover {
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+    padding-left: 0.25rem;
+    margin-left: -0.25rem;
+}
+.schema-column .col-type {
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+}
+.schema-column .pk-badge {
+    font-size: 0.6rem;
+    background: var(--color-warning-light);
+    color: var(--color-warning);
+    padding: 0 0.25rem;
+    border-radius: 2px;
+}
+.schema-loading {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
 </style>
 {% endblock %}
 
@@ -102,6 +165,14 @@
                     </select>
                 </div>
                 
+                <!-- Schema Reference -->
+                <div class="form-group" id="schema-container">
+                    <label class="form-label">Tables & Columns Reference</label>
+                    <div id="schema-content" class="schema-reference">
+                        <div class="schema-loading">Loading schema...</div>
+                    </div>
+                </div>
+                
                 <div class="form-group">
                     <label class="form-label">Chart Type</label>
                     <select name="chart_type" id="chart-type-select" class="form-input">
@@ -112,7 +183,26 @@
                 </div>
                 
                 <div class="form-group">
+                    <label class="form-label">Auto Refresh</label>
+                    <select name="auto_refresh" id="auto-refresh-select" class="form-input">
+                        {% for value, label in refresh_choices %}
+                        <option value="{{ value }}" {% if value == chart.auto_refresh %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted">Chart will automatically update at this interval</small>
+                </div>
+                
+                <div class="form-group">
                     <label class="form-label">SQL Query</label>
+                    <div class="query-templates">
+                        <span class="text-muted" style="font-size: 0.75rem;">Templates:</span>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('count')">Count by Category</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('sum')">Sum by Category</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('avg')">Average by Category</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('top')">Top N Records</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('time')">Time Series</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('distribution')">Distribution</button>
+                    </div>
                     <textarea name="query" id="query-input" class="form-input" rows="6" required>{{ chart.query }}</textarea>
                     <small class="text-muted">First column = labels, other columns = values</small>
                 </div>
@@ -149,6 +239,153 @@
 {% block extra_js %}
 <script>
 let previewChartInstance = null;
+let currentSchema = null;
+
+const queryTemplates = {
+    count: `-- Count records by category
+SELECT category_column, COUNT(*) as count
+FROM table_name
+GROUP BY category_column
+ORDER BY count DESC`,
+    sum: `-- Sum values by category
+SELECT category_column, SUM(value_column) as total
+FROM table_name
+GROUP BY category_column
+ORDER BY total DESC`,
+    avg: `-- Average values by category
+SELECT category_column, AVG(value_column) as average
+FROM table_name
+GROUP BY category_column
+ORDER BY average DESC`,
+    top: `-- Top N records
+SELECT label_column, value_column
+FROM table_name
+ORDER BY value_column DESC
+LIMIT 10`,
+    time: `-- Time series data
+SELECT strftime('%Y-%m', date_column) as month, SUM(value_column) as total
+FROM table_name
+GROUP BY month
+ORDER BY month`,
+    distribution: `-- Value distribution
+SELECT 
+    CASE 
+        WHEN value_column < 10 THEN '0-9'
+        WHEN value_column < 50 THEN '10-49'
+        WHEN value_column < 100 THEN '50-99'
+        ELSE '100+'
+    END as range,
+    COUNT(*) as count
+FROM table_name
+GROUP BY range
+ORDER BY range`
+};
+
+function setQueryTemplate(type) {
+    const textarea = document.getElementById('query-input');
+    if (textarea && queryTemplates[type]) {
+        textarea.value = queryTemplates[type];
+        textarea.focus();
+    }
+}
+
+// Load database schema
+function loadSchema(dbName) {
+    const content = document.getElementById('schema-content');
+    
+    if (!dbName) {
+        content.innerHTML = '<div class="text-muted">Select a database to see tables</div>';
+        return;
+    }
+    
+    content.innerHTML = '<div class="schema-loading">Loading schema...</div>';
+    
+    fetch(`/api/database/${encodeURIComponent(dbName)}/schema/`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                content.innerHTML = `<div class="text-danger">${data.error}</div>`;
+                return;
+            }
+            
+            currentSchema = data.tables;
+            renderSchema(data.tables);
+        })
+        .catch(err => {
+            content.innerHTML = `<div class="text-danger">Error loading schema</div>`;
+        });
+}
+
+function renderSchema(tables) {
+    const content = document.getElementById('schema-content');
+    const tableNames = Object.keys(tables);
+    
+    if (tableNames.length === 0) {
+        content.innerHTML = '<div class="text-muted">No tables found</div>';
+        return;
+    }
+    
+    let html = '';
+    tableNames.forEach(tableName => {
+        const columns = tables[tableName];
+        html += `
+            <div class="schema-table">
+                <div class="schema-table-name" onclick="toggleTableColumns('${tableName}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 18l6-6-6-6"/>
+                    </svg>
+                    ${tableName}
+                    <span style="color: var(--color-text-muted); font-weight: normal; font-size: 0.7rem;">(${columns.length} cols)</span>
+                </div>
+                <div class="schema-columns" id="cols-${tableName}">
+                    ${columns.map(col => `
+                        <div class="schema-column" onclick="insertColumnName('${tableName}', '${col.name}')" title="Click to insert">
+                            <span>${col.name}</span>
+                            <span class="col-type">${col.type || 'TEXT'}</span>
+                            ${col.pk ? '<span class="pk-badge">PK</span>' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+    
+    content.innerHTML = html;
+}
+
+function toggleTableColumns(tableName) {
+    const el = document.getElementById(`cols-${tableName}`);
+    el.classList.toggle('expanded');
+    const arrow = el.previousElementSibling.querySelector('svg');
+    if (el.classList.contains('expanded')) {
+        arrow.style.transform = 'rotate(90deg)';
+    } else {
+        arrow.style.transform = '';
+    }
+}
+
+function insertColumnName(tableName, columnName) {
+    const queryInput = document.getElementById('query-input');
+    const cursorPos = queryInput.selectionStart;
+    const textBefore = queryInput.value.substring(0, cursorPos);
+    const textAfter = queryInput.value.substring(queryInput.selectionEnd);
+    queryInput.value = textBefore + columnName + textAfter;
+    queryInput.focus();
+    queryInput.setSelectionRange(cursorPos + columnName.length, cursorPos + columnName.length);
+}
+
+// Load schema when database changes
+document.getElementById('database-select').addEventListener('change', function() {
+    loadSchema(this.value);
+});
+
+// Load schema on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const dbSelect = document.getElementById('database-select');
+    if (dbSelect.value) {
+        loadSchema(dbSelect.value);
+    }
+});
 
 const chartColors = [
     'rgba(37, 99, 235, 0.8)',

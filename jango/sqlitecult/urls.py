@@ -55,4 +55,5 @@ urlpatterns = [
     path('dashboard/chart/<int:chart_id>/delete/', views.DeleteChartView.as_view(), name='delete_chart'),
     path('dashboard/chart/<int:chart_id>/data/', views.ChartDataView.as_view(), name='chart_data'),
     path('dashboard/preview-chart/', views.PreviewChartView.as_view(), name='preview_chart'),
+    path('api/database/<str:db_name>/schema/', views.DatabaseSchemaAPIView.as_view(), name='database_schema_api'),
 ]

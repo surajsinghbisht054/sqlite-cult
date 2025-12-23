@@ -537,12 +537,23 @@ class DashboardChart(models.Model):
         ('radar', 'Radar Chart'),
     ]
     
+    REFRESH_CHOICES = [
+        (0, 'No auto-refresh'),
+        (30, '30 seconds'),
+        (60, '1 minute'),
+        (300, '5 minutes'),
+        (600, '10 minutes'),
+        (1800, '30 minutes'),
+        (3600, '1 hour'),
+    ]
+    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='dashboard_charts')
     dashboard = models.ForeignKey(Dashboard, on_delete=models.CASCADE, related_name='charts', null=True, blank=True)
     title = models.CharField(max_length=255)
     database_name = models.CharField(max_length=255)
     query = models.TextField()
     chart_type = models.CharField(max_length=20, choices=CHART_TYPES, default='bar')
+    auto_refresh = models.IntegerField(choices=REFRESH_CHOICES, default=0, help_text='Auto-refresh interval in seconds')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     order = models.IntegerField(default=0)

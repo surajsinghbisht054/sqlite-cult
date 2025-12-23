@@ -123,6 +123,23 @@
     border-radius: 999px;
     font-weight: 500;
 }
+.auto-refresh-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    background: var(--color-success-light);
+    color: var(--color-success);
+    border-radius: var(--border-radius-sm);
+    font-weight: 500;
+}
+.auto-refresh-badge svg {
+    animation: spin 2s linear infinite;
+}
+@keyframes spin {
+    100% { transform: rotate(360deg); }
+}
 </style>
 {% endblock %}
 
@@ -169,11 +186,20 @@
 {% if charts %}
 <div class="charts-grid">
     {% for chart in charts %}
-    <div class="chart-card" data-chart-id="{{ chart.id }}">
+    <div class="chart-card" data-chart-id="{{ chart.id }}" data-auto-refresh="{{ chart.auto_refresh }}">
         <div class="chart-card-header">
             <span class="chart-card-title">
                 {{ chart.title }}
                 <span class="chart-type-badge">{{ chart.get_chart_type_display }}</span>
+                {% if chart.auto_refresh %}
+                <span class="auto-refresh-badge" title="Auto-refresh: {{ chart.get_auto_refresh_display }}">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    {{ chart.get_auto_refresh_display }}
+                </span>
+                {% endif %}
             </span>
             <div class="chart-card-actions">
                 <button class="btn-icon" onclick="refreshChart({{ chart.id }})" title="Refresh">
@@ -349,6 +375,35 @@ document.addEventListener('DOMContentLoaded', function() {
     {% for chart in charts %}
     refreshChart({{ chart.id }});
     {% endfor %}
+    
+    // Set up auto-refresh intervals
+    setupAutoRefresh();
+});
+
+const autoRefreshIntervals = {};
+
+function setupAutoRefresh() {
+    document.querySelectorAll('.chart-card[data-auto-refresh]').forEach(card => {
+        const chartId = card.dataset.chartId;
+        const interval = parseInt(card.dataset.autoRefresh, 10);
+        
+        if (interval > 0) {
+            // Clear existing interval if any
+            if (autoRefreshIntervals[chartId]) {
+                clearInterval(autoRefreshIntervals[chartId]);
+            }
+            
+            // Set up new interval
+            autoRefreshIntervals[chartId] = setInterval(() => {
+                refreshChart(parseInt(chartId, 10));
+            }, interval * 1000);
+        }
+    });
+}
+
+// Clean up intervals when leaving page
+window.addEventListener('beforeunload', function() {
+    Object.values(autoRefreshIntervals).forEach(interval => clearInterval(interval));
 });
 </script>
 {% endblock %}
