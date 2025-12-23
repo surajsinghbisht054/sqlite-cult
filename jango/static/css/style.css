@@ -683,19 +683,27 @@ select.form-input {
 }
 
 .data-table th.col-resizable {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
 }
 
+/* Wrapper for th content to enable absolute positioning of resize handle */
+.data-table th.col-resizable .th-content {
+    position: relative;
+    padding-right: 8px;
+}
+
 .data-table th .col-resize-handle {
     position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 5px;
+    right: -4px;
+    top: -0.75rem;
+    bottom: -0.75rem;
+    width: 12px;
     cursor: col-resize;
     background: transparent;
     transition: background 0.15s;
+    z-index: 20;
 }
 
 .data-table th .col-resize-handle:hover,
@@ -1113,6 +1121,19 @@ select.form-input {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.75rem;
+}
+
+.query-templates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.query-templates .btn {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
 }
 
 .query-result {

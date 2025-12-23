@@ -217,8 +217,8 @@
                                             </svg>
                                         </button>
                                     </div>
+                                    <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
                                 </div>
-                                <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
                             </th>
                             {% for col in column_names %}
                             <th class="col-resizable" data-col="{{ forloop.counter }}" style="min-width: 100px;">
@@ -232,8 +232,8 @@
                                             </svg>
                                         </button>
                                     </div>
+                                    <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
                                 </div>
-                                <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
                             </th>
                             {% endfor %}
                             <th class="actions-cell" style="width: 100px;">Actions</th>
@@ -300,6 +300,52 @@
                 {% endif %}
             </div>
             {% endif %}
+        </div>
+
+        <!-- SQL Query Section -->
+        <div class="card" style="margin-top: 1rem;">
+            <div class="card-header" style="cursor: pointer;" onclick="toggleQuerySection()">
+                <h3 class="card-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 0.5rem;">
+                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <path d="M12 18v-6"></path>
+                        <path d="M9 15l3 3 3-3"></path>
+                    </svg>
+                    Execute SQL Query
+                </h3>
+                <svg id="query-section-toggle" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+            <div id="query-section" class="card-body" style="display: none;">
+                <div class="query-editor">
+                    <div class="form-group">
+                        <label class="form-label">SQL Query</label>
+                        <textarea id="query-input" class="form-input query-input" rows="4"
+                                  placeholder="Enter your SQL query here...&#10;Example: SELECT * FROM {{ table_name }} WHERE id = 1&#10;&#10;Tip: Use Ctrl+Enter to execute"></textarea>
+                    </div>
+                    <div class="query-templates" style="margin-bottom: 1rem;">
+                        <span class="text-muted" style="font-size: 0.75rem; margin-right: 0.5rem;">Quick templates:</span>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('select')">SELECT</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('select_where')">SELECT WHERE</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('update')">UPDATE</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('delete')">DELETE</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('insert')">INSERT</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="setQueryTemplate('count')">COUNT</button>
+                    </div>
+                    <div class="query-actions" style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-primary" onclick="executeQuery()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            Execute (Ctrl+Enter)
+                        </button>
+                        <button class="btn btn-ghost" onclick="document.getElementById('query-input').value=''">Clear</button>
+                    </div>
+                </div>
+                <div id="query-result" style="margin-top: 1rem;"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -499,6 +545,131 @@ function removeBulkColumnRow(btn) {
     }
 }
 
+// Query Execution Variables
+const dbName = '{{ db_name }}';
+const tableName = '{{ table_name }}';
+const csrfToken = '{{ csrf_token }}';
+const columnNames = [{% for col in column_names %}'{{ col }}'{% if not forloop.last %}, {% endif %}{% endfor %}];
+
+// Toggle query section visibility
+function toggleQuerySection() {
+    const section = document.getElementById('query-section');
+    const toggle = document.getElementById('query-section-toggle');
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        toggle.style.transform = 'rotate(180deg)';
+    } else {
+        section.style.display = 'none';
+        toggle.style.transform = 'rotate(0deg)';
+    }
+}
+
+// Set query templates
+function setQueryTemplate(type) {
+    const input = document.getElementById('query-input');
+    const cols = columnNames.join(', ');
+    const placeholders = columnNames.map(() => '?').join(', ');
+    const setClauses = columnNames.map(col => `${col} = ?`).join(', ');
+    
+    const templates = {
+        'select': `SELECT * FROM ${tableName} LIMIT 100;`,
+        'select_where': `SELECT * FROM ${tableName} WHERE column_name = 'value' LIMIT 100;`,
+        'update': `UPDATE ${tableName} SET column_name = 'new_value' WHERE id = 1;`,
+        'delete': `DELETE FROM ${tableName} WHERE id = 1;`,
+        'insert': `INSERT INTO ${tableName} (${cols}) VALUES (${placeholders});`,
+        'count': `SELECT COUNT(*) as total FROM ${tableName};`
+    };
+    
+    input.value = templates[type] || '';
+    input.focus();
+}
+
+// Execute SQL query
+function executeQuery() {
+    const query = document.getElementById('query-input').value.trim();
+    if (!query) {
+        showToast('Please enter a query', 'warning');
+        return;
+    }
+    
+    const resultDiv = document.getElementById('query-result');
+    resultDiv.innerHTML = '<div class="flex items-center gap-1"><div class="spinner"></div> Executing...</div>';
+    
+    fetch(`/database/${dbName}/execute/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrfToken
+        },
+        body: 'query=' + encodeURIComponent(query)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            resultDiv.innerHTML = `<div class="message message-error" style="margin-bottom: 0;">${escapeHtml(data.error)}</div>`;
+        } else if (data.columns) {
+            let html = `<div class="query-result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span class="text-muted">${data.row_count} row${data.row_count !== 1 ? 's' : ''} returned</span>
+                <button class="btn btn-ghost btn-sm" onclick="copyQueryResults()">Copy Results</button>
+            </div>`;
+            html += '<div class="table-container" style="max-height: 400px;"><table class="data-table" id="query-results-table"><thead><tr>';
+            data.columns.forEach(col => {
+                html += `<th>${escapeHtml(col)}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            data.rows.forEach(row => {
+                html += '<tr>';
+                data.columns.forEach(col => {
+                    const val = row[col];
+                    html += `<td>${val === null ? '<span class="null-value">NULL</span>' : escapeHtml(String(val))}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            resultDiv.innerHTML = html;
+        } else {
+            resultDiv.innerHTML = `<div class="message message-success" style="margin-bottom: 0;">${escapeHtml(data.message)}</div>`;
+            // Reload page if data was modified (INSERT, UPDATE, DELETE)
+            if (query.toUpperCase().match(/^\s*(INSERT|UPDATE|DELETE|DROP|ALTER)/)) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
+        }
+    })
+    .catch(error => {
+        resultDiv.innerHTML = `<div class="message message-error" style="margin-bottom: 0;">Error: ${escapeHtml(error.message)}</div>`;
+    });
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Copy query results to clipboard
+function copyQueryResults() {
+    const table = document.getElementById('query-results-table');
+    if (!table) return;
+    
+    let text = '';
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent);
+    text += headers.join('\t') + '\n';
+    
+    table.querySelectorAll('tbody tr').forEach(row => {
+        const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
+        text += cells.join('\t') + '\n';
+    });
+    
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Results copied to clipboard');
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+
 // Column Management Variables
 const STORAGE_KEY = 'sqlitecult_table_{{ db_name }}_{{ table_name }}_columns';
 let columnState = loadColumnState();
@@ -629,7 +800,11 @@ function resetColumns() {
 // Column Resize Functions
 function initResize(e, handle) {
     e.preventDefault();
-    const th = handle.parentElement;
+    e.stopPropagation();
+    // Get the th element (parent of .th-content which is parent of handle)
+    const th = handle.closest('th');
+    if (!th) return;
+    
     resizeState = {
         isResizing: true,
         startX: e.pageX,
@@ -637,16 +812,20 @@ function initResize(e, handle) {
         th: th
     };
     handle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', doResize);
     document.addEventListener('mouseup', stopResize);
 }
 
 function doResize(e) {
     if (!resizeState.isResizing) return;
+    e.preventDefault();
     const width = Math.max(50, resizeState.startWidth + (e.pageX - resizeState.startX));
     resizeState.th.style.width = width + 'px';
+    resizeState.th.style.minWidth = width + 'px';
     
-    // Also resize corresponding cells in tbody
+    // Save width to state
     const colIndex = resizeState.th.dataset.col;
     if (colIndex !== undefined) {
         columnState.widths[colIndex] = width;
@@ -656,6 +835,8 @@ function doResize(e) {
 function stopResize() {
     if (resizeState.isResizing) {
         resizeState.isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
         const handle = resizeState.th.querySelector('.col-resize-handle');
         if (handle) handle.classList.remove('resizing');
         saveColumnState();
@@ -797,6 +978,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const item = columnList.querySelector(`[data-col="${colIndex}"]`);
             if (item) {
                 columnList.appendChild(item);
+            }
+        });
+    }
+    
+    // Add keyboard shortcut for query execution (Ctrl+Enter)
+    const queryInput = document.getElementById('query-input');
+    if (queryInput) {
+        queryInput.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                executeQuery();
             }
         });
     }
