@@ -1,7 +1,7 @@
 // SQLite Cult - Main JavaScript
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Auto-hide messages after 5 seconds
+    // Auto-hide messages after 30 seconds
     document.querySelectorAll('.message').forEach(function(msg) {
         setTimeout(function() {
             msg.style.opacity = '0';
@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() {
                 msg.remove();
             }, 300);
-        }, 5000);
+        }, 30000);
     });
 
     // Close dropdowns when clicking outside
