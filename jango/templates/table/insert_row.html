@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block title %}Insert Row - {{ table_name }} - SQLite Cult{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{% url 'database_list' %}">Databases</a>
+    <span class="breadcrumb-separator">/</span>
+    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    <span class="breadcrumb-separator">/</span>
+    <a href="{% url 'table_detail' db_name table_name %}">{{ table_name }}</a>
+    <span class="breadcrumb-separator">/</span>
+    <span>Insert Row</span>
+</div>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Insert New Row</h1>
+        <p class="page-subtitle">Add a new record to {{ table_name }}</p>
+    </div>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form method="post">
+        {% csrf_token %}
+        <div class="card-body">
+            {% for col in columns %}
+            <div class="form-group">
+                <label class="form-label">
+                    {{ col.1 }}
+                    <span class="text-muted" style="font-weight: normal;">{{ col.2 }}</span>
+                    {% if col.5 %}<span class="badge badge-primary" style="margin-left: 0.25rem;">PK</span>{% endif %}
+                    {% if col.3 %}<span class="badge badge-success" style="margin-left: 0.25rem;">NOT NULL</span>{% endif %}
+                </label>
+                {% if col.2 == "TEXT" or col.2 == "BLOB" %}
+                <textarea name="{{ col.1 }}" class="form-input" rows="2" 
+                          {% if col.3 and not col.4 and not col.5 %}required{% endif %}
+                          placeholder="{% if col.4 %}Default: {{ col.4 }}{% endif %}"></textarea>
+                {% else %}
+                <input type="{% if col.2 == 'INTEGER' or col.2 == 'REAL' or col.2 == 'NUMERIC' %}number{% else %}text{% endif %}" 
+                       name="{{ col.1 }}" class="form-input"
+                       {% if col.3 and not col.4 and not col.5 %}required{% endif %}
+                       {% if col.2 == 'REAL' or col.2 == 'NUMERIC' %}step="any"{% endif %}
+                       placeholder="{% if col.4 %}Default: {{ col.4 }}{% elif col.5 %}Auto-generated{% endif %}">
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="card-footer flex justify-between">
+            <a href="{% url 'table_detail' db_name table_name %}" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary">Insert Row</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

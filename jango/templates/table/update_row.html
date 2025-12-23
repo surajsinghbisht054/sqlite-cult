@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% load sqlitecult_tags %}
+
+{% block title %}Update Row - {{ table_name }} - SQLite Cult{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{% url 'database_list' %}">Databases</a>
+    <span class="breadcrumb-separator">/</span>
+    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    <span class="breadcrumb-separator">/</span>
+    <a href="{% url 'table_detail' db_name table_name %}">{{ table_name }}</a>
+    <span class="breadcrumb-separator">/</span>
+    <span>Update Row #{{ rowid }}</span>
+</div>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Update Row #{{ rowid }}</h1>
+        <p class="page-subtitle">Edit record in {{ table_name }}</p>
+    </div>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form method="post">
+        {% csrf_token %}
+        <div class="card-body">
+            {% for col in columns %}
+            <div class="form-group">
+                <label class="form-label">
+                    {{ col.1 }}
+                    <span class="text-muted" style="font-weight: normal;">{{ col.2 }}</span>
+                    {% if col.5 %}<span class="badge badge-primary" style="margin-left: 0.25rem;">PK</span>{% endif %}
+                </label>
+                {% with value=row|dict_get:col.1 %}
+                {% if col.2 == "TEXT" or col.2 == "BLOB" %}
+                <textarea name="{{ col.1 }}" class="form-input" rows="2">{% if value is not None %}{{ value }}{% endif %}</textarea>
+                {% else %}
+                <input type="{% if col.2 == 'INTEGER' or col.2 == 'REAL' or col.2 == 'NUMERIC' %}number{% else %}text{% endif %}" 
+                       name="{{ col.1 }}" class="form-input"
+                       {% if col.2 == 'REAL' or col.2 == 'NUMERIC' %}step="any"{% endif %}
+                       value="{% if value is not None %}{{ value }}{% endif %}">
+                {% endif %}
+                {% endwith %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="card-footer flex justify-between">
+            <a href="{% url 'table_detail' db_name table_name %}" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary">Update Row</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

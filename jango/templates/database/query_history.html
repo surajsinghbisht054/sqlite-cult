@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block title %}Query History - SQLite Cult{% endblock %}
+
+{% block extra_css %}
+<style>
+{{ pygments_css|safe }}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{% url 'database_list' %}">Databases</a>
+    {% if db_name %}
+    <span class="breadcrumb-separator">/</span>
+    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    {% endif %}
+    <span class="breadcrumb-separator">/</span>
+    <span>Query History</span>
+</div>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Query History</h1>
+        <p class="page-subtitle">
+            {% if db_name %}
+                Recent queries for {{ db_name }}
+            {% else %}
+                All recent queries
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+{% if highlighted_history %}
+<div class="history-list">
+    {% for item in highlighted_history %}
+    <div class="history-item">
+        <div class="history-item-header">
+            <div class="history-item-status {% if item.success %}success{% else %}error{% endif %}">
+                {% if item.success %}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Success
+                {% else %}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="15" y1="9" x2="9" y2="15"></line>
+                    <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                Failed
+                {% endif %}
+            </div>
+            <div>
+                {% if not db_name %}
+                <span class="badge badge-primary">{{ item.database_name }}</span>
+                {% endif %}
+                {{ item.executed_at|date:"M d, Y H:i:s" }}
+            </div>
+        </div>
+        <div class="history-item-body">
+            {{ item.highlighted_query|safe }}
+        </div>
+        {% if item.error_message %}
+        <div class="history-item-error">
+            {{ item.error_message }}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <h3 class="empty-state-title">No query history</h3>
+        <p class="empty-state-text">Executed queries will appear here.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

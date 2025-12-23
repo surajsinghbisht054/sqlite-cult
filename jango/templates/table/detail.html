@@ -1,0 +1,805 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ table_name }} - {{ db_name }} - SQLite Cult{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{% url 'database_list' %}">Databases</a>
+    <span class="breadcrumb-separator">/</span>
+    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    <span class="breadcrumb-separator">/</span>
+    <span>{{ table_name }}</span>
+</div>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ table_name }}</h1>
+        <p class="page-subtitle">{{ total_rows }} row{{ total_rows|pluralize }} &bull; {{ columns|length }} column{{ columns|length|pluralize }}</p>
+    </div>
+    <div class="flex gap-1">
+        <a href="{% url 'export_table' db_name table_name %}" class="btn btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export CSV
+        </a>
+        <a href="{% url 'insert_row' db_name table_name %}" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Insert Row
+        </a>
+    </div>
+</div>
+
+<div class="split-layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <!-- Schema -->
+        <div class="card mb-2">
+            <div class="card-header">
+                <h3 class="card-title">Columns</h3>
+                <div class="flex gap-1">
+                    <button class="btn btn-sm btn-ghost" onclick="openModal('bulk-column-modal')">Manage</button>
+                    <button class="btn btn-sm btn-ghost" onclick="openModal('add-column-modal')">Add</button>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0.5rem;">
+                {% for col in columns %}
+                <div class="flex items-center justify-between" style="padding: 0.5rem;">
+                    <div>
+                        <span class="text-mono">{{ col.1 }}</span>
+                        <span class="text-muted text-mono" style="font-size: 0.75rem;">{{ col.2 }}</span>
+                        {% if col.5 %}<span class="badge badge-primary" style="margin-left: 0.25rem; font-size: 0.625rem;">PK</span>{% endif %}
+                        {% if col.3 %}<span class="badge badge-success" style="margin-left: 0.25rem; font-size: 0.625rem;">NOT NULL</span>{% endif %}
+                    </div>
+                    <form method="post" action="{% url 'drop_column' db_name table_name col.1 %}" 
+                          onsubmit="return confirm('Drop column {{ col.1 }}?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-icon" title="Drop column">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Indexes -->
+        <div class="card mb-2">
+            <div class="card-header">
+                <h3 class="card-title">Indexes</h3>
+                <button class="btn btn-sm btn-ghost" onclick="openModal('create-index-modal')">Add</button>
+            </div>
+            <div class="card-body" style="padding: 0.5rem;">
+                {% if indexes %}
+                {% for idx in indexes %}
+                <div class="flex items-center justify-between" style="padding: 0.5rem;">
+                    <span class="text-mono" style="font-size: 0.875rem;">{{ idx.1 }}</span>
+                    {% if not idx.1|slice:":7" == "sqlite_" %}
+                    <form method="post" action="{% url 'drop_index' db_name table_name idx.1 %}" 
+                          onsubmit="return confirm('Drop index {{ idx.1 }}?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-icon" title="Drop index">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted" style="padding: 0.5rem; font-size: 0.875rem;">No indexes</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Import -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Import Data</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'import_preview' db_name table_name %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <input type="file" name="file" class="form-input" accept=".csv" required>
+                        <small class="text-muted" style="display: block; margin-top: 0.25rem;">New columns will be detected automatically</small>
+                    </div>
+                    <button type="submit" class="btn btn-ghost btn-sm" style="width: 100%;">Import</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content - Data -->
+    <div class="content">
+        <div class="card">
+            <!-- Table Toolbar -->
+            <div class="table-toolbar">
+                <div class="table-toolbar-group">
+                    <span class="table-toolbar-label">Columns:</span>
+                    <div class="column-visibility-dropdown">
+                        <button type="button" class="column-visibility-btn" onclick="toggleColumnMenu()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            Show/Hide
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div class="column-visibility-menu" id="column-visibility-menu">
+                            <div class="column-visibility-menu-header">
+                                <span class="column-visibility-menu-title">Manage Columns</span>
+                                <div class="column-visibility-menu-actions">
+                                    <button type="button" onclick="showAllColumns()">Show All</button>
+                                    <button type="button" onclick="hideAllColumns()">Hide All</button>
+                                </div>
+                            </div>
+                            <div id="column-list">
+                                <div class="column-visibility-item" data-col="0">
+                                    <span class="col-drag-handle" draggable="true">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="9" cy="5" r="1"></circle>
+                                            <circle cx="9" cy="12" r="1"></circle>
+                                            <circle cx="9" cy="19" r="1"></circle>
+                                            <circle cx="15" cy="5" r="1"></circle>
+                                            <circle cx="15" cy="12" r="1"></circle>
+                                            <circle cx="15" cy="19" r="1"></circle>
+                                        </svg>
+                                    </span>
+                                    <input type="checkbox" id="col-toggle-0" checked onchange="toggleColumn(0)">
+                                    <label class="col-label" for="col-toggle-0">Row ID</label>
+                                </div>
+                                {% for col in column_names %}
+                                <div class="column-visibility-item" data-col="{{ forloop.counter }}">
+                                    <span class="col-drag-handle" draggable="true">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="9" cy="5" r="1"></circle>
+                                            <circle cx="9" cy="12" r="1"></circle>
+                                            <circle cx="9" cy="19" r="1"></circle>
+                                            <circle cx="15" cy="5" r="1"></circle>
+                                            <circle cx="15" cy="12" r="1"></circle>
+                                            <circle cx="15" cy="19" r="1"></circle>
+                                        </svg>
+                                    </span>
+                                    <input type="checkbox" id="col-toggle-{{ forloop.counter }}" checked onchange="toggleColumn({{ forloop.counter }})">
+                                    <label class="col-label" for="col-toggle-{{ forloop.counter }}">{{ col }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-toolbar-group">
+                    <button type="button" class="reset-columns-btn" onclick="resetColumns()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                            <path d="M21 3v5h-5"></path>
+                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                            <path d="M3 21v-5h5"></path>
+                        </svg>
+                        Reset
+                    </button>
+                </div>
+                <div class="table-toolbar-group" style="margin-left: auto;">
+                    <div class="table-scroll-hint">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14"></path>
+                            <path d="M12 5l7 7-7 7"></path>
+                        </svg>
+                        Scroll horizontally • Drag column edges to resize
+                    </div>
+                </div>
+            </div>
+            <div class="table-container" id="table-container">
+                <table class="data-table" id="data-table">
+                    <thead>
+                        <tr>
+                            <th class="col-resizable" data-col="0" style="width: 80px;">
+                                <div class="th-content">
+                                    <span class="col-name">Row ID</span>
+                                    <div class="col-actions">
+                                        <button type="button" class="col-action-btn" onclick="hideColumn(0)" title="Hide column">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                                <line x1="1" y1="1" x2="23" y2="23"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
+                            </th>
+                            {% for col in column_names %}
+                            <th class="col-resizable" data-col="{{ forloop.counter }}" style="min-width: 100px;">
+                                <div class="th-content">
+                                    <span class="col-name">{{ col }}</span>
+                                    <div class="col-actions">
+                                        <button type="button" class="col-action-btn" onclick="hideColumn({{ forloop.counter }})" title="Hide column">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                                <line x1="1" y1="1" x2="23" y2="23"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
+                            </th>
+                            {% endfor %}
+                            <th class="actions-cell" style="width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td data-col="0">{{ row.0 }}</td>
+                            {% for val in row|slice:"1:" %}
+                            <td data-col="{{ forloop.counter }}">
+                                {% if val is None %}
+                                <span class="null-value">NULL</span>
+                                {% else %}
+                                {{ val }}
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                            <td class="actions-cell">
+                                <a href="{% url 'update_row' db_name table_name row.0 %}" 
+                                   class="btn-icon" title="Edit">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                </a>
+                                <form method="post" action="{% url 'delete_row' db_name table_name row.0 %}"
+                                      style="display: inline;" onsubmit="return confirm('Delete this row?')">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-icon" title="Delete">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="{{ column_names|length|add:2 }}" class="text-center text-muted" style="padding: 2rem;">
+                                No data in this table
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="?page={{ page|add:-1 }}&per_page={{ per_page }}" class="pagination-btn">&laquo; Previous</a>
+                {% else %}
+                <button class="pagination-btn" disabled>&laquo; Previous</button>
+                {% endif %}
+                
+                <span class="pagination-info">Page {{ page }} of {{ total_pages }}</span>
+                
+                {% if page < total_pages %}
+                <a href="?page={{ page|add:1 }}&per_page={{ per_page }}" class="pagination-btn">Next &raquo;</a>
+                {% else %}
+                <button class="pagination-btn" disabled>Next &raquo;</button>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Column Modal -->
+<div id="add-column-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('add-column-modal')">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Add Column</h3>
+            <button class="modal-close" onclick="closeModal('add-column-modal')">&times;</button>
+        </div>
+        <form method="post" action="{% url 'add_column' db_name table_name %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Column Name</label>
+                    <input type="text" name="column_name" class="form-input" placeholder="new_column" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Column Type</label>
+                    <select name="column_type" class="form-input">
+                        {% for value, label in column_types %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Constraint</label>
+                    <select name="column_constraint" class="form-input">
+                        {% for value, label in column_constraints %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Default Value (optional)</label>
+                    <input type="text" name="default_value" class="form-input" placeholder="Leave empty for none">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('add-column-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add Column</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Create Index Modal -->
+<div id="create-index-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('create-index-modal')">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Create Index</h3>
+            <button class="modal-close" onclick="closeModal('create-index-modal')">&times;</button>
+        </div>
+        <form method="post" action="{% url 'create_index' db_name table_name %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Index Name</label>
+                    <input type="text" name="index_name" class="form-input" required 
+                           placeholder="idx_{{ table_name }}_column">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Select Columns</label>
+                    <div class="checkbox-group">
+                        {% for col in column_names %}
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="index_columns" value="{{ col }}" class="form-checkbox">
+                            <span class="text-mono">{{ col }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <small class="text-muted mt-1" style="display: block;">Select one or more columns for the index</small>
+                </div>
+                <div class="form-group">
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" name="unique" class="form-checkbox">
+                        Unique index
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('create-index-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Index</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Bulk Column Management Modal -->
+<div id="bulk-column-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('bulk-column-modal')">
+    <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Manage Columns</h3>
+            <button class="modal-close" onclick="closeModal('bulk-column-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <!-- Tabs -->
+            <div class="tabs" style="margin-bottom: 1rem;">
+                <button type="button" class="tab active" onclick="switchBulkTab('add')" id="tab-add">Add Columns</button>
+                <button type="button" class="tab" onclick="switchBulkTab('drop')" id="tab-drop">Drop Columns</button>
+            </div>
+            
+            <!-- Add Columns Tab -->
+            <div id="bulk-add-tab">
+                <form method="post" action="{% url 'bulk_add_columns' db_name table_name %}" id="bulk-add-form">
+                    {% csrf_token %}
+                    <div id="bulk-columns-container">
+                        <div class="bulk-column-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 0.5rem; margin-bottom: 0.5rem; align-items: end;">
+                            <div>
+                                <label class="form-label" style="font-size: 0.75rem;">Name</label>
+                                <input type="text" name="col_name[]" class="form-input" placeholder="column_name" required>
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size: 0.75rem;">Type</label>
+                                <select name="col_type[]" class="form-input">
+                                    {% for value, label in column_types %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size: 0.75rem;">Constraint</label>
+                                <select name="col_constraint[]" class="form-input">
+                                    {% for value, label in column_constraints %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size: 0.75rem;">Default</label>
+                                <input type="text" name="col_default[]" class="form-input" placeholder="optional">
+                            </div>
+                            <button type="button" class="btn-icon" onclick="removeBulkColumnRow(this)" title="Remove" style="margin-bottom: 0.25rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="addBulkColumnRow()" style="margin-top: 0.5rem;">
+                        + Add Another Column
+                    </button>
+                    <div class="modal-footer" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border);">
+                        <button type="button" class="btn btn-ghost" onclick="closeModal('bulk-column-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add All Columns</button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Drop Columns Tab -->
+            <div id="bulk-drop-tab" style="display: none;">
+                <form method="post" action="{% url 'bulk_drop_columns' db_name table_name %}" onsubmit="return confirm('Are you sure you want to drop the selected columns? This action cannot be undone.')">
+                    {% csrf_token %}
+                    <p class="text-muted" style="margin-bottom: 1rem;">Select columns to drop from the table:</p>
+                    <div class="checkbox-group">
+                        {% for col in columns %}
+                        <label class="checkbox-label" style="display: flex; align-items: center; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 4px; margin-bottom: 0.5rem;">
+                            <input type="checkbox" name="columns[]" value="{{ col.1 }}" class="form-checkbox" {% if col.5 %}disabled{% endif %}>
+                            <span class="text-mono" style="margin-left: 0.5rem;">{{ col.1 }}</span>
+                            <span class="text-muted text-mono" style="font-size: 0.75rem; margin-left: 0.5rem;">{{ col.2 }}</span>
+                            {% if col.5 %}<span class="badge badge-primary" style="margin-left: 0.5rem; font-size: 0.625rem;">PK - Cannot drop</span>{% endif %}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div class="modal-footer" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border);">
+                        <button type="button" class="btn btn-ghost" onclick="closeModal('bulk-column-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-danger">Drop Selected Columns</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function switchBulkTab(tab) {
+    document.getElementById('bulk-add-tab').style.display = tab === 'add' ? 'block' : 'none';
+    document.getElementById('bulk-drop-tab').style.display = tab === 'drop' ? 'block' : 'none';
+    document.getElementById('tab-add').classList.toggle('active', tab === 'add');
+    document.getElementById('tab-drop').classList.toggle('active', tab === 'drop');
+}
+
+function addBulkColumnRow() {
+    const container = document.getElementById('bulk-columns-container');
+    const template = container.querySelector('.bulk-column-row').cloneNode(true);
+    template.querySelectorAll('input').forEach(input => input.value = '');
+    template.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
+    container.appendChild(template);
+}
+
+function removeBulkColumnRow(btn) {
+    const container = document.getElementById('bulk-columns-container');
+    if (container.querySelectorAll('.bulk-column-row').length > 1) {
+        btn.closest('.bulk-column-row').remove();
+    }
+}
+
+// Column Management Variables
+const STORAGE_KEY = 'sqlitecult_table_{{ db_name }}_{{ table_name }}_columns';
+let columnState = loadColumnState();
+let resizeState = { isResizing: false, startX: 0, startWidth: 0, th: null };
+
+// Load column state from localStorage
+function loadColumnState() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            return JSON.parse(saved);
+        }
+    } catch (e) {
+        console.warn('Failed to load column state:', e);
+    }
+    return { hidden: [], widths: {}, order: [] };
+}
+
+// Save column state to localStorage
+function saveColumnState() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(columnState));
+    } catch (e) {
+        console.warn('Failed to save column state:', e);
+    }
+}
+
+// Toggle column visibility menu
+function toggleColumnMenu() {
+    const menu = document.getElementById('column-visibility-menu');
+    menu.classList.toggle('active');
+}
+
+// Close menu when clicking outside
+document.addEventListener('click', function(e) {
+    const dropdown = document.querySelector('.column-visibility-dropdown');
+    const menu = document.getElementById('column-visibility-menu');
+    if (dropdown && menu && !dropdown.contains(e.target)) {
+        menu.classList.remove('active');
+    }
+});
+
+// Toggle column visibility
+function toggleColumn(colIndex) {
+    const isHidden = columnState.hidden.includes(colIndex);
+    if (isHidden) {
+        columnState.hidden = columnState.hidden.filter(i => i !== colIndex);
+    } else {
+        columnState.hidden.push(colIndex);
+    }
+    applyColumnVisibility();
+    saveColumnState();
+}
+
+// Hide a specific column
+function hideColumn(colIndex) {
+    if (!columnState.hidden.includes(colIndex)) {
+        columnState.hidden.push(colIndex);
+        document.getElementById(`col-toggle-${colIndex}`).checked = false;
+        applyColumnVisibility();
+        saveColumnState();
+    }
+}
+
+// Show all columns
+function showAllColumns() {
+    columnState.hidden = [];
+    document.querySelectorAll('#column-list input[type="checkbox"]').forEach(cb => {
+        cb.checked = true;
+    });
+    applyColumnVisibility();
+    saveColumnState();
+}
+
+// Hide all columns except Row ID and Actions
+function hideAllColumns() {
+    const totalCols = document.querySelectorAll('.data-table thead th[data-col]').length;
+    columnState.hidden = [];
+    for (let i = 1; i < totalCols; i++) {
+        columnState.hidden.push(i);
+    }
+    document.querySelectorAll('#column-list input[type="checkbox"]').forEach((cb, index) => {
+        cb.checked = index === 0;
+    });
+    applyColumnVisibility();
+    saveColumnState();
+}
+
+// Apply column visibility to table
+function applyColumnVisibility() {
+    const table = document.getElementById('data-table');
+    const headers = table.querySelectorAll('thead th[data-col]');
+    const rows = table.querySelectorAll('tbody tr');
+    
+    headers.forEach(th => {
+        const colIndex = parseInt(th.dataset.col);
+        th.classList.toggle('col-hidden', columnState.hidden.includes(colIndex));
+    });
+    
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td[data-col]');
+        cells.forEach(td => {
+            const colIndex = parseInt(td.dataset.col);
+            td.classList.toggle('col-hidden', columnState.hidden.includes(colIndex));
+        });
+    });
+}
+
+// Reset columns to default
+function resetColumns() {
+    columnState = { hidden: [], widths: {}, order: [] };
+    localStorage.removeItem(STORAGE_KEY);
+    
+    // Reset checkboxes
+    document.querySelectorAll('#column-list input[type="checkbox"]').forEach(cb => {
+        cb.checked = true;
+    });
+    
+    // Reset column widths
+    document.querySelectorAll('.data-table thead th[data-col]').forEach(th => {
+        th.style.width = '';
+    });
+    
+    applyColumnVisibility();
+    showToast('Columns reset to default');
+}
+
+// Column Resize Functions
+function initResize(e, handle) {
+    e.preventDefault();
+    const th = handle.parentElement;
+    resizeState = {
+        isResizing: true,
+        startX: e.pageX,
+        startWidth: th.offsetWidth,
+        th: th
+    };
+    handle.classList.add('resizing');
+    document.addEventListener('mousemove', doResize);
+    document.addEventListener('mouseup', stopResize);
+}
+
+function doResize(e) {
+    if (!resizeState.isResizing) return;
+    const width = Math.max(50, resizeState.startWidth + (e.pageX - resizeState.startX));
+    resizeState.th.style.width = width + 'px';
+    
+    // Also resize corresponding cells in tbody
+    const colIndex = resizeState.th.dataset.col;
+    if (colIndex !== undefined) {
+        columnState.widths[colIndex] = width;
+    }
+}
+
+function stopResize() {
+    if (resizeState.isResizing) {
+        resizeState.isResizing = false;
+        const handle = resizeState.th.querySelector('.col-resize-handle');
+        if (handle) handle.classList.remove('resizing');
+        saveColumnState();
+    }
+    document.removeEventListener('mousemove', doResize);
+    document.removeEventListener('mouseup', stopResize);
+}
+
+// Column Reordering via Drag and Drop in Menu
+function initColumnDragDrop() {
+    const columnList = document.getElementById('column-list');
+    let draggedItem = null;
+    
+    columnList.addEventListener('dragstart', function(e) {
+        const handle = e.target.closest('.col-drag-handle');
+        if (!handle) {
+            e.preventDefault();
+            return;
+        }
+        draggedItem = handle.closest('.column-visibility-item');
+        draggedItem.classList.add('sortable-drag');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    
+    columnList.addEventListener('dragend', function(e) {
+        if (draggedItem) {
+            draggedItem.classList.remove('sortable-drag');
+            draggedItem = null;
+        }
+        document.querySelectorAll('.column-visibility-item').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+    });
+    
+    columnList.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        const target = e.target.closest('.column-visibility-item');
+        if (target && target !== draggedItem) {
+            const bounding = target.getBoundingClientRect();
+            const offset = e.clientY - bounding.top;
+            
+            document.querySelectorAll('.column-visibility-item').forEach(item => {
+                item.classList.remove('drag-over');
+            });
+            
+            if (offset > bounding.height / 2) {
+                target.classList.add('drag-over');
+            }
+        }
+    });
+    
+    columnList.addEventListener('drop', function(e) {
+        e.preventDefault();
+        const target = e.target.closest('.column-visibility-item');
+        if (target && draggedItem && target !== draggedItem) {
+            const bounding = target.getBoundingClientRect();
+            const offset = e.clientY - bounding.top;
+            
+            if (offset > bounding.height / 2) {
+                target.after(draggedItem);
+            } else {
+                target.before(draggedItem);
+            }
+            
+            // Update column order in state
+            updateColumnOrder();
+            applyColumnOrder();
+            saveColumnState();
+        }
+    });
+}
+
+function updateColumnOrder() {
+    const items = document.querySelectorAll('#column-list .column-visibility-item');
+    columnState.order = Array.from(items).map(item => parseInt(item.dataset.col));
+}
+
+function applyColumnOrder() {
+    if (columnState.order.length === 0) return;
+    
+    const table = document.getElementById('data-table');
+    const thead = table.querySelector('thead tr');
+    const tbody = table.querySelector('tbody');
+    const rows = tbody.querySelectorAll('tr');
+    
+    // Get all column headers (excluding actions)
+    const headers = Array.from(thead.querySelectorAll('th[data-col]'));
+    const actionsHeader = thead.querySelector('th.actions-cell:not([data-col])');
+    
+    // Reorder headers based on columnState.order
+    columnState.order.forEach(colIndex => {
+        const header = headers.find(h => parseInt(h.dataset.col) === colIndex);
+        if (header) {
+            thead.insertBefore(header, actionsHeader);
+        }
+    });
+    
+    // Reorder cells in each row
+    rows.forEach(row => {
+        const cells = Array.from(row.querySelectorAll('td[data-col]'));
+        const actionsCell = row.querySelector('td.actions-cell:not([data-col])');
+        
+        columnState.order.forEach(colIndex => {
+            const cell = cells.find(c => parseInt(c.dataset.col) === colIndex);
+            if (cell) {
+                row.insertBefore(cell, actionsCell);
+            }
+        });
+    });
+}
+
+// Apply saved column widths
+function applyColumnWidths() {
+    Object.entries(columnState.widths).forEach(([colIndex, width]) => {
+        const th = document.querySelector(`.data-table thead th[data-col="${colIndex}"]`);
+        if (th) {
+            th.style.width = width + 'px';
+        }
+    });
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    applyColumnVisibility();
+    applyColumnWidths();
+    applyColumnOrder();
+    initColumnDragDrop();
+    
+    // Update checkboxes based on saved state
+    columnState.hidden.forEach(colIndex => {
+        const checkbox = document.getElementById(`col-toggle-${colIndex}`);
+        if (checkbox) checkbox.checked = false;
+    });
+    
+    // Reorder menu items based on saved order
+    if (columnState.order.length > 0) {
+        const columnList = document.getElementById('column-list');
+        columnState.order.forEach(colIndex => {
+            const item = columnList.querySelector(`[data-col="${colIndex}"]`);
+            if (item) {
+                columnList.appendChild(item);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

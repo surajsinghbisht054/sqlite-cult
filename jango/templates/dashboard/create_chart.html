@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Chart - SQLite Cult{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.chart-form-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+@media (max-width: 900px) {
+    .chart-form-layout { grid-template-columns: 1fr; }
+}
+.preview-area {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    min-height: 350px;
+    display: flex;
+    flex-direction: column;
+}
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+}
+.preview-chart {
+    flex: 1;
+    position: relative;
+    min-height: 280px;
+}
+.preview-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--color-text-muted);
+    text-align: center;
+}
+.preview-error {
+    color: var(--color-danger);
+    padding: 1rem;
+    background: var(--color-danger-light);
+    border-radius: var(--border-radius-sm);
+    margin-top: 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{% url 'dashboard_list' %}">Dashboards</a>
+    <span class="breadcrumb-separator">/</span>
+    {% if selected_dashboard %}
+    <a href="{% url 'dashboard_detail' selected_dashboard.id %}">{{ selected_dashboard.name }}</a>
+    <span class="breadcrumb-separator">/</span>
+    {% endif %}
+    <span>Create Chart</span>
+</div>
+
+<div class="page-header">
+    <h1 class="page-title">Create Chart</h1>
+</div>
+
+<form method="post" id="chart-form">
+    {% csrf_token %}
+    <div class="chart-form-layout">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Chart Settings</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">Dashboard</label>
+                    <select name="dashboard_id" class="form-input" required>
+                        {% for dashboard in dashboards %}
+                        <option value="{{ dashboard.id }}" {% if selected_dashboard and selected_dashboard.id == dashboard.id %}selected{% endif %}>
+                            {{ dashboard.name }}{% if dashboard.is_default %} (Default){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Chart Title</label>
+                    <input type="text" name="title" class="form-input" placeholder="e.g., Monthly Sales" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Database</label>
+                    <select name="database_name" id="database-select" class="form-input" required>
+                        <option value="">Select database...</option>
+                        {% for db in databases %}
+                        <option value="{{ db }}">{{ db }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Chart Type</label>
+                    <select name="chart_type" id="chart-type-select" class="form-input">
+                        {% for value, label in chart_types %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">SQL Query</label>
+                    <textarea name="query" id="query-input" class="form-input" rows="6" 
+                              placeholder="SELECT category, COUNT(*) as count FROM items GROUP BY category" required></textarea>
+                    <small class="text-muted">First column = labels, other columns = values</small>
+                </div>
+                
+                <div class="flex gap-1">
+                    <button type="button" class="btn btn-ghost" onclick="previewChart()">Preview</button>
+                    <button type="submit" class="btn btn-primary">Save Chart</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="preview-area">
+            <div class="preview-header">
+                <h3 class="card-title">Preview</h3>
+            </div>
+            <div class="preview-chart" id="preview-container">
+                <div class="preview-placeholder">
+                    <div>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity: 0.3;">
+                            <line x1="18" y1="20" x2="18" y2="10"></line>
+                            <line x1="12" y1="20" x2="12" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="14"></line>
+                        </svg>
+                        <p>Enter a query and click Preview</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let previewChartInstance = null;
+
+const chartColors = [
+    'rgba(37, 99, 235, 0.8)',
+    'rgba(22, 163, 74, 0.8)',
+    'rgba(217, 119, 6, 0.8)',
+    'rgba(220, 38, 38, 0.8)',
+    'rgba(139, 92, 246, 0.8)',
+    'rgba(6, 182, 212, 0.8)',
+];
+
+function getChartColors(count) {
+    const colors = [];
+    for (let i = 0; i < count; i++) {
+        colors.push(chartColors[i % chartColors.length]);
+    }
+    return colors;
+}
+
+function previewChart() {
+    const database = document.getElementById('database-select').value;
+    const query = document.getElementById('query-input').value;
+    const chartType = document.getElementById('chart-type-select').value;
+    const container = document.getElementById('preview-container');
+    
+    if (!database || !query) {
+        container.innerHTML = '<div class="preview-error">Please select a database and enter a query.</div>';
+        return;
+    }
+    
+    container.innerHTML = '<div class="preview-placeholder">Loading...</div>';
+    
+    const formData = new FormData();
+    formData.append('database_name', database);
+    formData.append('query', query);
+    
+    fetch('{% url "preview_chart" %}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            container.innerHTML = `<div class="preview-error">${data.error}</div>`;
+            return;
+        }
+        
+        if (!data.data || data.data.length === 0 || data.columns.length < 2) {
+            container.innerHTML = '<div class="preview-error">No data returned or insufficient columns. Query must return at least 2 columns.</div>';
+            return;
+        }
+        
+        container.innerHTML = '<canvas id="preview-canvas"></canvas>';
+        renderPreview(chartType, data.columns, data.data);
+    })
+    .catch(err => {
+        container.innerHTML = `<div class="preview-error">Error: ${err.message}</div>`;
+    });
+}
+
+function renderPreview(chartType, columns, data) {
+    const canvas = document.getElementById('preview-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (previewChartInstance) {
+        previewChartInstance.destroy();
+    }
+    
+    const labels = data.map(row => row[columns[0]]);
+    const datasets = [];
+    
+    if (chartType === 'pie' || chartType === 'doughnut') {
+        datasets.push({
+            data: data.map(row => parseFloat(row[columns[1]]) || 0),
+            backgroundColor: getChartColors(data.length),
+            borderWidth: 1
+        });
+    } else {
+        for (let i = 1; i < columns.length; i++) {
+            datasets.push({
+                label: columns[i],
+                data: data.map(row => parseFloat(row[columns[i]]) || 0),
+                backgroundColor: chartColors[(i - 1) % chartColors.length],
+                borderColor: chartColors[(i - 1) % chartColors.length],
+                borderWidth: 2,
+                tension: 0.1
+            });
+        }
+    }
+    
+    previewChartInstance = new Chart(ctx, {
+        type: chartType,
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: chartType === 'pie' || chartType === 'doughnut' || columns.length > 2
+                }
+            }
+        }
+    });
+}
+
+// Re-render preview when chart type changes
+document.getElementById('chart-type-select').addEventListener('change', function() {
+    if (previewChartInstance) {
+        previewChart();
+    }
+});
+</script>
+{% endblock %}

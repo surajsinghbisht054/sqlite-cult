@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Dashboard - SQLite Cult{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{% url 'dashboard_list' %}">Dashboards</a>
+    <span class="breadcrumb-separator">/</span>
+    <span>Edit Dashboard</span>
+</div>
+
+<div class="page-header">
+    <h1 class="page-title">Edit Dashboard</h1>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <div class="card-header">
+        <h3 class="card-title">Dashboard Settings</h3>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label class="form-label">Dashboard Name</label>
+                <input type="text" name="name" class="form-input" value="{{ dashboard.name }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Description</label>
+                <textarea name="description" class="form-input" rows="3" placeholder="Brief description of this dashboard">{{ dashboard.description }}</textarea>
+            </div>
+            
+            <div class="form-group" style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a href="{% url 'dashboard_list' %}" class="btn btn-ghost">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

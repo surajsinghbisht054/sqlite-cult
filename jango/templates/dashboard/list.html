@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboards - SQLite Cult{% endblock %}
+
+{% block extra_css %}
+<style>
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+.dashboard-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    transition: var(--transition);
+    position: relative;
+}
+.dashboard-card:hover {
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-md);
+}
+.dashboard-card.is-default {
+    border-color: var(--color-primary);
+    background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-surface) 100%);
+}
+.dashboard-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+.dashboard-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+    border-radius: var(--border-radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+.dashboard-card-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+.dashboard-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.dashboard-name a {
+    color: var(--color-text);
+}
+.dashboard-name a:hover {
+    color: var(--color-primary);
+}
+.default-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    background: var(--color-primary);
+    color: white;
+    border-radius: 999px;
+    font-weight: 500;
+}
+.dashboard-description {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 0.45rem;
+}
+.dashboard-meta {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin-top: 0.45rem;
+}
+.dashboard-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--color-text-muted);
+}
+.empty-state svg {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+.create-dashboard-form {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+.create-dashboard-form .form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+}
+.create-dashboard-form .form-group {
+    margin-bottom: 0;
+}
+.create-dashboard-form .form-group:first-child {
+    flex: 1;
+}
+.create-dashboard-form .form-group:nth-child(2) {
+    flex: 2;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Dashboards</h1>
+        <p class="page-subtitle">Organize your charts into different dashboard collections</p>
+    </div>
+</div>
+
+<form method="post" action="{% url 'create_dashboard' %}" class="create-dashboard-form">
+    {% csrf_token %}
+    <h3 style="margin-bottom: 1rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--color-text-muted);">Create New Dashboard</h3>
+    <div class="form-row" style="background-color: white;">
+        <div class="form-group">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" class="form-input" placeholder="e.g., Sales Analytics" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Description (optional)</label>
+            <input type="text" name="description" class="form-input" placeholder="Brief description of this dashboard">
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Create
+        </button>
+    </div>
+</form>
+
+{% if dashboards %}
+<div class="dashboard-grid">
+    {% for dashboard in dashboards %}
+    <div class="dashboard-card {% if dashboard.is_default %}is-default{% endif %}">
+        <div class="dashboard-card-header">
+            <div class="dashboard-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg>
+            </div>
+            <div class="dashboard-card-actions">
+                {% if not dashboard.is_default %}
+                <form method="post" action="{% url 'set_default_dashboard' dashboard.id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-icon" title="Set as default">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </button>
+                </form>
+                {% endif %}
+                <a href="{% url 'edit_dashboard' dashboard.id %}" class="btn-icon" title="Edit">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                </a>
+                {% if not dashboard.is_default %}
+                <form method="post" action="{% url 'delete_dashboard' dashboard.id %}" style="display: inline;"
+                      onsubmit="return confirm('Delete this dashboard? Charts will be moved to your default dashboard.')">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-icon" title="Delete">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        <div class="dashboard-name">
+            <a href="{% url 'dashboard_detail' dashboard.id %}">{{ dashboard.name }}</a>
+            {% if dashboard.is_default %}
+            <span class="default-badge">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                Default
+            </span>
+            {% endif %}
+        </div>
+        <p class="dashboard-description">{{ dashboard.description|default:"No description" }}</p>
+        <a href="{% url 'dashboard_detail' dashboard.id %}" class="btn btn-ghost btn-sm">Open</a>
+
+        <div class="dashboard-meta">
+            <span class="dashboard-meta-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                {{ dashboard.charts.count }} chart{{ dashboard.charts.count|pluralize }}
+            </span>
+            <span class="dashboard-meta-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                {{ dashboard.updated_at|date:"M d, Y" }}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="3" y1="9" x2="21" y2="9"></line>
+        <line x1="9" y1="21" x2="9" y2="9"></line>
+    </svg>
+    <h2>No dashboards yet</h2>
+    <p>Create your first dashboard to organize your charts.</p>
+</div>
+{% endif %}
+{% endblock %}
