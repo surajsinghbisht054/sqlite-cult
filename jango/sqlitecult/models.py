@@ -210,6 +210,73 @@ class SQLiteManager:
         return sql_statements
     
     @staticmethod
+    def modify_column(db_name, table_name, column_name, new_type, new_constraint=None):
+        """
+        Modify a column's type in SQLite by recreating the table.
+        SQLite doesn't support ALTER COLUMN, so we need to:
+        1. Create a new table with the modified column
+        2. Copy data from old table
+        3. Drop old table
+        4. Rename new table to original name
+        """
+        with SQLiteManager.get_connection(db_name) as conn:
+            cursor = conn.cursor()
+            
+            # Get current table schema
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            columns = cursor.fetchall()
+            
+            # Get current indexes
+            cursor.execute(f'PRAGMA index_list("{table_name}")')
+            indexes = cursor.fetchall()
+            
+            # Build column definitions for new table
+            column_defs = []
+            column_names_list = []
+            for col in columns:
+                col_id, col_name, col_type, not_null, default_val, is_pk = col
+                column_names_list.append(f'"{col_name}"')
+                
+                if col_name == column_name:
+                    # This is the column we're modifying
+                    col_def = f'"{col_name}" {new_type}'
+                    if new_constraint:
+                        col_def += f' {new_constraint}'
+                    elif not_null and 'NOT NULL' not in (new_constraint or ''):
+                        col_def += ' NOT NULL'
+                else:
+                    # Keep original column definition
+                    col_def = f'"{col_name}" {col_type}'
+                    if is_pk:
+                        col_def += ' PRIMARY KEY'
+                    if not_null and not is_pk:
+                        col_def += ' NOT NULL'
+                    if default_val is not None:
+                        col_def += f' DEFAULT {default_val}'
+                
+                column_defs.append(col_def)
+            
+            temp_table = f'_temp_{table_name}_{column_name}'
+            cols_str = ', '.join(column_defs)
+            col_names_str = ', '.join(column_names_list)
+            
+            # Create new table
+            cursor.execute(f'CREATE TABLE "{temp_table}" ({cols_str})')
+            
+            # Copy data
+            cursor.execute(f'INSERT INTO "{temp_table}" ({col_names_str}) SELECT {col_names_str} FROM "{table_name}"')
+            
+            # Drop old table
+            cursor.execute(f'DROP TABLE "{table_name}"')
+            
+            # Rename new table
+            cursor.execute(f'ALTER TABLE "{temp_table}" RENAME TO "{table_name}"')
+            
+            conn.commit()
+            
+        return f'Modified column "{column_name}" to {new_type}'
+    
+    @staticmethod
     def drop_columns_bulk(db_name, table_name, column_names):
         """Drop multiple columns from a table."""
         sql_statements = []
@@ -308,13 +375,16 @@ class SQLiteManager:
             cursor = conn.cursor()
             cursor.execute(query)
             
-            if query.strip().upper().startswith('SELECT'):
+            # Check if query returns data (SELECT, PRAGMA, etc.)
+            # cursor.description is not None when the query returns rows
+            if cursor.description is not None:
                 rows = cursor.fetchall()
                 if rows:
                     columns = list(rows[0].keys())
                     data = [dict(row) for row in rows]
                 else:
-                    columns = []
+                    # Query returned no rows but has columns (empty result)
+                    columns = [desc[0] for desc in cursor.description]
                     data = []
                 return {
                     'type': 'select',

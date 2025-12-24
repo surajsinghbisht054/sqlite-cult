@@ -255,6 +255,26 @@ class DropColumnView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
+class ModifyColumnView(LoginRequiredMixin, View):
+    """Modify a column's type in a table."""
+    def post(self, request, db_name, table_name, column_name):
+        new_type = request.POST.get('new_type', '').strip()
+        new_constraint = request.POST.get('new_constraint', '').strip()
+        
+        if not new_type:
+            messages.error(request, 'Column type is required.')
+            return redirect('table_detail', db_name=db_name, table_name=table_name)
+        
+        try:
+            result = SQLiteManager.modify_column(db_name, table_name, column_name, new_type, new_constraint)
+            QueryHistory.log_query(request.user, db_name, result)
+            messages.success(request, f'Column "{column_name}" modified to {new_type} successfully.')
+        except Exception as e:
+            messages.error(request, f'Error modifying column: {str(e)}')
+        
+        return redirect('table_detail', db_name=db_name, table_name=table_name)
+
+
 class BulkAddColumnsView(LoginRequiredMixin, View):
     """Add multiple columns to a table at once."""
     def post(self, request, db_name, table_name):

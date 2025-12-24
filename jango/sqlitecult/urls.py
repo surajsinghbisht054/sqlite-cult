@@ -26,6 +26,7 @@ urlpatterns = [
     path('database/<str:db_name>/table/<str:table_name>/bulk-add-columns/', views.BulkAddColumnsView.as_view(), name='bulk_add_columns'),
     path('database/<str:db_name>/table/<str:table_name>/bulk-drop-columns/', views.BulkDropColumnsView.as_view(), name='bulk_drop_columns'),
     path('database/<str:db_name>/table/<str:table_name>/drop-column/<str:column_name>/', views.DropColumnView.as_view(), name='drop_column'),
+    path('database/<str:db_name>/table/<str:table_name>/modify-column/<str:column_name>/', views.ModifyColumnView.as_view(), name='modify_column'),
     
     # Index operations
     path('database/<str:db_name>/table/<str:table_name>/create-index/', views.CreateIndexView.as_view(), name='create_index'),

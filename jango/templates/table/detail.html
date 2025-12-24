@@ -67,22 +67,30 @@
             <div class="card-body" style="padding: 0.5rem;">
                 {% for col in columns %}
                 <div class="flex items-center justify-between" style="padding: 0.5rem;">
-                    <div>
+                    <div style="flex: 1;">
                         <span class="text-mono">{{ col.1 }}</span>
                         <span class="text-muted text-mono" style="font-size: 0.75rem;">{{ col.2 }}</span>
                         {% if col.5 %}<span class="badge badge-primary" style="margin-left: 0.25rem; font-size: 0.625rem;">PK</span>{% endif %}
                         {% if col.3 %}<span class="badge badge-success" style="margin-left: 0.25rem; font-size: 0.625rem;">NOT NULL</span>{% endif %}
                     </div>
-                    <form method="post" action="{% url 'drop_column' db_name table_name col.1 %}" 
-                          onsubmit="return confirm('Drop column {{ col.1 }}?')">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-icon" title="Drop column">
+                    <div class="flex gap-1">
+                        <button type="button" class="btn-icon" title="Modify column type" onclick="openModifyColumnModal('{{ col.1 }}', '{{ col.2 }}')">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                             </svg>
                         </button>
-                    </form>
+                        <form method="post" action="{% url 'drop_column' db_name table_name col.1 %}" 
+                              onsubmit="return confirm('Drop column {{ col.1 }}?')" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-icon" title="Drop column">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -539,6 +547,57 @@
     </div>
 </div>
 
+<!-- Modify Column Type Modal -->
+<div id="modify-column-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('modify-column-modal')">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Modify Column Type</h3>
+            <button class="modal-close" onclick="closeModal('modify-column-modal')">&times;</button>
+        </div>
+        <form id="modify-column-form" method="post">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="message message-warning" style="margin-bottom: 1rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <span style="margin-left: 0.5rem;">Changing column type will recreate the table. Existing data may be affected if types are incompatible.</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Column Name</label>
+                    <input type="text" id="modify-column-name" class="form-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Current Type</label>
+                    <input type="text" id="modify-column-current-type" class="form-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">New Type</label>
+                    <select name="new_type" id="modify-column-new-type" class="form-input" required>
+                        {% for value, label in column_types %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Constraint (optional)</label>
+                    <select name="new_constraint" class="form-input">
+                        {% for value, label in column_constraints %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('modify-column-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Modify Column</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 // Sidebar Toggle
 const SIDEBAR_KEY = 'sqlitecult_sidebar_collapsed';
@@ -583,6 +642,28 @@ function removeBulkColumnRow(btn) {
     if (container.querySelectorAll('.bulk-column-row').length > 1) {
         btn.closest('.bulk-column-row').remove();
     }
+}
+
+// Modify Column Modal
+function openModifyColumnModal(columnName, currentType) {
+    document.getElementById('modify-column-name').value = columnName;
+    document.getElementById('modify-column-current-type').value = currentType;
+    
+    // Set the form action with the column name
+    const form = document.getElementById('modify-column-form');
+    form.action = `/database/${dbName}/table/${tableName}/modify-column/${encodeURIComponent(columnName)}/`;
+    
+    // Try to select the current type in the dropdown
+    const typeSelect = document.getElementById('modify-column-new-type');
+    const normalizedType = currentType.toUpperCase().trim();
+    for (let i = 0; i < typeSelect.options.length; i++) {
+        if (typeSelect.options[i].value.toUpperCase() === normalizedType) {
+            typeSelect.selectedIndex = i;
+            break;
+        }
+    }
+    
+    openModal('modify-column-modal');
 }
 
 // Query Execution Variables
