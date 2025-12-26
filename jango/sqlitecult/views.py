@@ -170,6 +170,7 @@ class DatabaseDetailView(DatabaseReadPermissionMixin, TemplateView):
         is_admin = user.is_superuser or user.is_staff
         can_write = is_owner or is_admin or DatabasePermission.has_write_permission(user, db_name)
         can_manage = is_owner or is_admin
+        has_owner = DatabaseOwnership.get_owner(db_name) is not None
         
         context['db_name'] = db_name
         context['tables'] = table_info
@@ -179,6 +180,19 @@ class DatabaseDetailView(DatabaseReadPermissionMixin, TemplateView):
         context['is_admin'] = is_admin
         context['can_write'] = can_write
         context['can_manage'] = can_manage
+        context['has_owner'] = has_owner
+        
+        # Add API settings for owners
+        context['api_enabled'] = False
+        context['api_key'] = ''
+        if is_owner or is_admin:
+            try:
+                ownership = DatabaseOwnership.objects.get(database_name=db_name)
+                context['api_enabled'] = ownership.api_enabled
+                context['api_key'] = ownership.api_secret_key or ''
+            except DatabaseOwnership.DoesNotExist:
+                pass
+                
         return context
 
 
@@ -1225,3 +1239,61 @@ class TransferOwnershipView(DatabaseOwnerOrAdminMixin, View):
             messages.error(request, f'Error transferring ownership: {str(e)}')
         
         return redirect('database_permissions', db_name=db_name)
+
+
+class ToggleAPIView(LoginRequiredMixin, View):
+    def post(self, request, db_name):
+        try:
+            ownership = DatabaseOwnership.objects.get(database_name=db_name)
+            if ownership.owner != request.user and not request.user.is_superuser:
+                messages.error(request, 'Permission denied.')
+                return redirect('database_detail', db_name=db_name)
+            
+            api_enabled = request.POST.get('api_enabled') == 'on'
+            ownership.api_enabled = api_enabled
+            if api_enabled and not ownership.api_secret_key:
+                ownership.generate_api_key()
+            ownership.save()
+            
+            status = "enabled" if api_enabled else "disabled"
+            messages.success(request, f'API access {status}.')
+        except DatabaseOwnership.DoesNotExist:
+            messages.error(request, 'Database not found.')
+            
+        return redirect('database_detail', db_name=db_name)
+
+
+class RegenerateAPIKeyView(LoginRequiredMixin, View):
+    def post(self, request, db_name):
+        try:
+            ownership = DatabaseOwnership.objects.get(database_name=db_name)
+            if ownership.owner != request.user and not request.user.is_superuser:
+                messages.error(request, 'Permission denied.')
+                return redirect('database_detail', db_name=db_name)
+            
+            ownership.generate_api_key()
+            messages.success(request, 'API Key regenerated.')
+        except DatabaseOwnership.DoesNotExist:
+            messages.error(request, 'Database not found.')
+            
+        return redirect('database_detail', db_name=db_name)
+
+
+class ClaimOwnershipView(LoginRequiredMixin, View):
+    """Allow admins or staff to claim ownership of legacy databases."""
+    def post(self, request, db_name):
+        user = request.user
+        
+        # Only superusers/staff can claim legacy databases
+        if not (user.is_superuser or user.is_staff):
+            messages.error(request, 'Only administrators can claim legacy databases.')
+            return redirect('database_detail', db_name=db_name)
+        
+        success, message = DatabaseOwnership.claim_ownership(user, db_name)
+        if success:
+            messages.success(request, f'You are now the owner of "{db_name}".')
+        else:
+            messages.error(request, message)
+        
+        return redirect('database_detail', db_name=db_name)
+

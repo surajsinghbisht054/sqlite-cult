@@ -199,8 +199,8 @@
 </div>
 
 <!-- Grant Permission Modal -->
-<div id="grant-permission-modal" class="modal">
-    <div class="modal-content">
+<div id="grant-permission-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('grant-permission-modal')">
+    <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Share Database</h3>
             <button class="modal-close" onclick="closeModal('grant-permission-modal')">&times;</button>
@@ -250,8 +250,8 @@
 </div>
 
 <!-- Transfer Ownership Modal -->
-<div id="transfer-ownership-modal" class="modal">
-    <div class="modal-content">
+<div id="transfer-ownership-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('transfer-ownership-modal')">
+    <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Transfer Ownership</h3>
             <button class="modal-close" onclick="closeModal('transfer-ownership-modal')">&times;</button>

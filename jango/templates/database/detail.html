@@ -58,7 +58,29 @@
 <div class="tabs">
     <div class="tab active" onclick="showTab('tables-tab')">Tables</div>
     <div class="tab" onclick="showTab('query-tab')">SQL Query</div>
+    {% if is_owner or is_admin %}
+    <div class="tab" onclick="showTab('api-tab')">API Access</div>
+    {% endif %}
 </div>
+
+{% if not is_owner and is_admin and not has_owner %}
+<!-- Legacy Database Notice -->
+<div class="alert alert-warning" style="margin-bottom: 1rem; padding: 1rem; background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 8px; display: flex; align-items: center; gap: 1rem;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>
+    <div style="flex: 1;">
+        <strong>Legacy Database</strong>
+        <p style="margin: 0; font-size: 0.875rem; color: var(--text-secondary);">This database was created before ownership tracking. As an administrator, you can claim ownership.</p>
+    </div>
+    <form method="post" action="{% url 'claim_ownership' db_name %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-warning">Claim Ownership</button>
+    </form>
+</div>
+{% endif %}
 
 <!-- Tables Tab -->
 <div id="tables-tab" class="tab-content active">
@@ -152,6 +174,187 @@
         </div>
     </div>
 </div>
+
+<!-- API Tab -->
+{% if is_owner or is_admin %}
+<div id="api-tab" class="tab-content">
+    {% if not has_owner %}
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="card-body" style="text-align: center; padding: 2rem;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 1rem; color: var(--warning);">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h3>Ownership Required</h3>
+            <p style="color: var(--text-secondary);">API access requires database ownership. Claim ownership first to enable API.</p>
+            <form method="post" action="{% url 'claim_ownership' db_name %}" style="margin-top: 1rem;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">Claim Ownership</button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="card-header">
+            <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+                API Access Control
+            </h3>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom: 1rem;">Enable API access to allow external applications (like n8n, Zapier, custom scripts) to perform CRUD operations on this database.</p>
+            
+            <form method="post" action="{% url 'toggle_api' db_name %}">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label class="toggle-switch" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                        <input type="checkbox" name="api_enabled" {% if api_enabled %}checked{% endif %} onchange="this.form.submit()" style="width: 20px; height: 20px;">
+                        <span style="font-weight: 500;">{% if api_enabled %}API Enabled{% else %}API Disabled{% endif %}</span>
+                        {% if api_enabled %}
+                        <span class="badge" style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">ACTIVE</span>
+                        {% endif %}
+                    </label>
+                </div>
+            </form>
+        </div>
+    </div>
+            
+    {% if api_enabled %}
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="card-header">
+            <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                API Key
+            </h3>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                <strong>⚠️ Keep this key secret!</strong> Anyone with this key can read and modify your database.
+            </p>
+            <div class="input-group" style="display: flex; gap: 10px; margin-bottom: 1rem;">
+                <input type="password" value="{{ api_key }}" readonly class="form-input" id="apiKey" style="flex: 1; font-family: monospace;">
+                <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="eyeIcon">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="copyToClipboard(document.getElementById('apiKey').value); showToast('API Key copied!');">Copy</button>
+                <form method="post" action="{% url 'regenerate_api_key' db_name %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('Are you sure? All applications using the current key will stop working.')">Regenerate</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="card-header">
+            <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                API Documentation
+            </h3>
+        </div>
+        <div class="card-body">
+            <h4 style="margin-bottom: 0.5rem;">Authentication</h4>
+            <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                Include your API key in the <code>X-API-Key</code> header with every request.
+            </p>
+            
+            <div style="background: var(--bg-tertiary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-family: monospace; font-size: 0.875rem; overflow-x: auto;">
+                <code>curl -H "X-API-Key: YOUR_API_KEY" {{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/tables/</code>
+            </div>
+
+            <h4 style="margin-bottom: 0.5rem;">Available Endpoints</h4>
+            <table class="data-table" style="width: 100%; margin-bottom: 1.5rem;">
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Endpoint</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge" style="background: #3b82f6; color: white;">GET</span></td>
+                        <td><code>/api/v1/database/{{ db_name }}/tables/</code></td>
+                        <td>List all tables</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background: #3b82f6; color: white;">GET</span></td>
+                        <td><code>/api/v1/database/{{ db_name }}/table/{table}/</code></td>
+                        <td>List rows (supports <code>?limit=50&offset=0</code>)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background: #10b981; color: white;">POST</span></td>
+                        <td><code>/api/v1/database/{{ db_name }}/table/{table}/</code></td>
+                        <td>Create a new row</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background: #3b82f6; color: white;">GET</span></td>
+                        <td><code>/api/v1/database/{{ db_name }}/table/{table}/{rowid}/</code></td>
+                        <td>Get a specific row</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background: #f59e0b; color: white;">PUT</span></td>
+                        <td><code>/api/v1/database/{{ db_name }}/table/{table}/{rowid}/</code></td>
+                        <td>Update a row</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background: #ef4444; color: white;">DELETE</span></td>
+                        <td><code>/api/v1/database/{{ db_name }}/table/{table}/{rowid}/</code></td>
+                        <td>Delete a row</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4 style="margin-bottom: 0.5rem;">Examples</h4>
+            
+            <p style="font-weight: 500; margin-bottom: 0.25rem;">List all tables:</p>
+            <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
+                <code>curl -X GET -H "X-API-Key: {{ api_key|truncatechars:20 }}..." \<br>
+                &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/tables/</code>
+            </div>
+
+            <p style="font-weight: 500; margin-bottom: 0.25rem;">Create a new row:</p>
+            <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
+                <code>curl -X POST -H "X-API-Key: YOUR_KEY" \<br>
+                &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+                &nbsp;&nbsp;-d '{"name": "John", "email": "john@example.com"}' \<br>
+                &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/table/users/</code>
+            </div>
+
+            <p style="font-weight: 500; margin-bottom: 0.25rem;">Update a row:</p>
+            <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
+                <code>curl -X PUT -H "X-API-Key: YOUR_KEY" \<br>
+                &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+                &nbsp;&nbsp;-d '{"email": "newemail@example.com"}' \<br>
+                &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/table/users/1/</code>
+            </div>
+
+            <p style="font-weight: 500; margin-bottom: 0.25rem;">Delete a row:</p>
+            <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
+                <code>curl -X DELETE -H "X-API-Key: YOUR_KEY" \<br>
+                &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/table/users/1/</code>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endif %}
 
 <!-- Create Table Modal -->
 <div id="create-table-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('create-table-modal')">
@@ -338,6 +541,18 @@ function confirmDropTable(name, url) {
     document.getElementById('drop-table-name').textContent = name;
     document.getElementById('drop-form').action = url;
     document.getElementById('drop-confirm').style.display = 'flex';
+}
+
+function toggleApiKeyVisibility() {
+    const input = document.getElementById('apiKey');
+    const icon = document.getElementById('eyeIcon');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+    } else {
+        input.type = 'password';
+        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+    }
 }
 
 function executeQuery() {

@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import api_views
 
 urlpatterns = [
     # Authentication
@@ -21,6 +22,11 @@ urlpatterns = [
     path('database/<str:db_name>/permissions/update/<int:user_id>/', views.UpdatePermissionView.as_view(), name='update_permission'),
     path('database/<str:db_name>/permissions/revoke/<int:user_id>/', views.RevokePermissionView.as_view(), name='revoke_permission'),
     path('database/<str:db_name>/permissions/transfer/', views.TransferOwnershipView.as_view(), name='transfer_ownership'),
+    
+    # API Management
+    path('database/<str:db_name>/toggle-api/', views.ToggleAPIView.as_view(), name='toggle_api'),
+    path('database/<str:db_name>/regenerate-api-key/', views.RegenerateAPIKeyView.as_view(), name='regenerate_api_key'),
+    path('database/<str:db_name>/claim-ownership/', views.ClaimOwnershipView.as_view(), name='claim_ownership'),
     
     # Table operations
     path('database/<str:db_name>/create-table/', views.CreateTableView.as_view(), name='create_table'),
@@ -64,4 +70,9 @@ urlpatterns = [
     path('dashboard/chart/<int:chart_id>/data/', views.ChartDataView.as_view(), name='chart_data'),
     path('dashboard/preview-chart/', views.PreviewChartView.as_view(), name='preview_chart'),
     path('api/database/<str:db_name>/schema/', views.DatabaseSchemaAPIView.as_view(), name='database_schema_api'),
+    
+    # REST API
+    path('api/v1/database/<str:db_name>/tables/', api_views.APITableListView.as_view(), name='api_table_list'),
+    path('api/v1/database/<str:db_name>/table/<str:table_name>/', api_views.APITableDataView.as_view(), name='api_table_data'),
+    path('api/v1/database/<str:db_name>/table/<str:table_name>/<int:rowid>/', api_views.APIRowDetailView.as_view(), name='api_row_detail'),
 ]

@@ -3,6 +3,7 @@ import sqlite3
 import json
 import csv
 import io
+import secrets
 from pathlib import Path
 from contextlib import contextmanager
 from django.db import models
@@ -629,6 +630,8 @@ class DatabaseOwnership(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_databases')
     database_name = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    api_enabled = models.BooleanField(default=False)
+    api_secret_key = models.CharField(max_length=64, blank=True, null=True)
     
     class Meta:
         verbose_name_plural = 'Database Ownerships'
@@ -637,6 +640,12 @@ class DatabaseOwnership(models.Model):
     def __str__(self):
         return f"{self.database_name} (owned by {self.owner.username})"
     
+    def generate_api_key(self):
+        """Generate a new API key."""
+        self.api_secret_key = secrets.token_urlsafe(32)
+        self.save()
+        return self.api_secret_key
+
     @classmethod
     def get_owner(cls, database_name):
         """Get the owner of a database."""
@@ -665,12 +674,24 @@ class DatabaseOwnership(models.Model):
             ownership.save()
             return True
         except cls.DoesNotExist:
-            return False
+            # Create ownership record for legacy database
+            cls.objects.create(owner=new_owner, database_name=database_name)
+            return True
     
     @classmethod
     def database_name_exists(cls, database_name):
         """Check if a database name is already registered (owned by someone)."""
         return cls.objects.filter(database_name=database_name).exists()
+    
+    @classmethod
+    def claim_ownership(cls, user, database_name):
+        """Claim ownership of a legacy database (one without an owner record)."""
+        if cls.objects.filter(database_name=database_name).exists():
+            return False, "Database already has an owner"
+        if not SQLiteManager.database_exists(database_name):
+            return False, "Database does not exist"
+        cls.objects.create(owner=user, database_name=database_name)
+        return True, "Ownership claimed successfully"
 
 
 class DatabasePermission(models.Model):
