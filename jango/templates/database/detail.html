@@ -12,7 +12,16 @@
 <div class="page-header">
     <div>
         <h1 class="page-title">{{ db_name }}</h1>
-        <p class="page-subtitle">{{ tables|length }} table{{ tables|length|pluralize }}</p>
+        <p class="page-subtitle">
+            {{ tables|length }} table{{ tables|length|pluralize }}
+            {% if is_owner %}
+                <span class="badge badge-owner">Owner</span>
+            {% elif is_admin %}
+                <span class="badge badge-admin">Admin</span>
+            {% elif not can_write %}
+                <span class="badge badge-read">Read Only</span>
+            {% endif %}
+        </p>
     </div>
     <div class="flex gap-1">
         <a href="{% url 'query_history' db_name %}" class="btn btn-ghost">
@@ -22,6 +31,18 @@
             </svg>
             History
         </a>
+        {% if can_manage %}
+        <a href="{% url 'database_permissions' db_name %}" class="btn btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            Permissions
+        </a>
+        {% endif %}
+        {% if can_write %}
         <button class="btn btn-primary" onclick="openModal('create-table-modal')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -29,6 +50,7 @@
             </svg>
             New Table
         </button>
+        {% endif %}
     </div>
 </div>
 

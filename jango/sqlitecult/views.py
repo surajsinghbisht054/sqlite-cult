@@ -1,10 +1,11 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.views import View
 from django.views.generic import TemplateView, FormView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
 from django.contrib import messages
 from django.conf import settings
 from django.urls import reverse_lazy
@@ -12,8 +13,16 @@ from pygments import highlight
 from pygments.lexers import SqlLexer
 from pygments.formatters import HtmlFormatter
 
-from .models import DatabaseAccess, QueryHistory, SQLiteManager, DashboardChart, Dashboard
+from .models import (
+    DatabaseAccess, QueryHistory, SQLiteManager, DashboardChart, Dashboard,
+    DatabaseOwnership, DatabasePermission, DatabasePermissionChecker
+)
 from .forms import CreateDatabaseForm
+from .mixins import (
+    DatabasePermissionMixin, DatabaseReadPermissionMixin,
+    DatabaseWritePermissionMixin, DatabaseAdminPermissionMixin,
+    DatabaseOwnerOrAdminMixin
+)
 
 
 # Authentication Views
@@ -60,10 +69,35 @@ class DatabaseListView(LoginRequiredMixin, TemplateView):
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        databases = SQLiteManager.list_databases()
-        db_info = [SQLiteManager.get_database_info(db) for db in databases]
+        user = self.request.user
+        
+        # Get accessible databases based on user permissions
+        accessible_db_names, has_full_access = DatabasePermissionChecker.get_accessible_databases(user)
+        
+        # Build database info with ownership details
+        db_info = []
+        for db_name in accessible_db_names:
+            info = SQLiteManager.get_database_info(db_name)
+            
+            # Add ownership information
+            owner = DatabaseOwnership.get_owner(db_name)
+            info['owner'] = owner.username if owner else 'Unknown'
+            info['is_owner'] = owner == user if owner else False
+            info['is_admin'] = user.is_superuser or user.is_staff
+            
+            # Get user's permission level if not owner
+            if not info['is_owner'] and not info['is_admin']:
+                perm_level = DatabasePermission.get_permission_level(user, db_name)
+                info['permission_level'] = perm_level
+            else:
+                info['permission_level'] = 'owner' if info['is_owner'] else 'admin'
+            
+            db_info.append(info)
+        
         context['databases'] = db_info
         context['create_form'] = CreateDatabaseForm()
+        context['has_full_access'] = has_full_access
+        context['is_admin'] = user.is_superuser or user.is_staff
         return context
 
 
@@ -72,36 +106,53 @@ class CreateDatabaseView(LoginRequiredMixin, View):
         form = CreateDatabaseForm(request.POST)
         if form.is_valid():
             db_name = form.cleaned_data['name']
+            
+            # Check if database name is available
+            is_available, error_msg = DatabasePermissionChecker.check_database_name_available(
+                request.user, db_name
+            )
+            
+            if not is_available:
+                messages.error(request, error_msg)
+                return redirect('database_list')
+            
             success, message = SQLiteManager.create_database(db_name)
             if success:
+                # Register ownership
+                DatabaseOwnership.create_ownership(request.user, db_name)
                 DatabaseAccess.log_access(request.user, db_name)
                 messages.success(request, f'Database "{db_name}" created successfully.')
             else:
-                messages.error(request, f'Database "{db_name}" already exists.')
+                messages.error(request, f'Failed to create database: {message}')
         else:
             messages.error(request, 'Invalid database name.')
         return redirect('database_list')
 
 
-class DeleteDatabaseView(LoginRequiredMixin, View):
+class DeleteDatabaseView(DatabaseOwnerOrAdminMixin, View):
+    """Only database owner or admin can delete a database."""
     def post(self, request, db_name):
         success, message = SQLiteManager.delete_database(db_name)
         if success:
+            # Clean up all related records
             DatabaseAccess.objects.filter(database_name=db_name).delete()
+            DatabaseOwnership.objects.filter(database_name=db_name).delete()
+            DatabasePermission.objects.filter(database_name=db_name).delete()
             messages.success(request, f'Database "{db_name}" deleted successfully.')
         else:
             messages.error(request, f'Database "{db_name}" not found.')
         return redirect('database_list')
 
 
-class DatabaseDetailView(LoginRequiredMixin, TemplateView):
+class DatabaseDetailView(DatabaseReadPermissionMixin, TemplateView):
     template_name = 'database/detail.html'
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         db_name = kwargs['db_name']
+        user = self.request.user
         
-        DatabaseAccess.log_access(self.request.user, db_name)
+        DatabaseAccess.log_access(user, db_name)
         
         tables = SQLiteManager.get_tables(db_name)
         table_info = []
@@ -114,15 +165,26 @@ class DatabaseDetailView(LoginRequiredMixin, TemplateView):
                 'row_count': row_count
             })
         
+        # Determine user's permission level for UI display
+        is_owner = DatabaseOwnership.is_owner(user, db_name)
+        is_admin = user.is_superuser or user.is_staff
+        can_write = is_owner or is_admin or DatabasePermission.has_write_permission(user, db_name)
+        can_manage = is_owner or is_admin
+        
         context['db_name'] = db_name
         context['tables'] = table_info
         context['column_types'] = SQLiteManager.COLUMN_TYPES
         context['column_constraints'] = SQLiteManager.COLUMN_CONSTRAINTS
+        context['is_owner'] = is_owner
+        context['is_admin'] = is_admin
+        context['can_write'] = can_write
+        context['can_manage'] = can_manage
         return context
 
 
 # Table Views
-class CreateTableView(LoginRequiredMixin, View):
+class CreateTableView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to create tables."""
     def post(self, request, db_name):
         table_name = request.POST.get('table_name', '').strip()
         
@@ -169,7 +231,8 @@ class CreateTableView(LoginRequiredMixin, View):
         return redirect('database_detail', db_name=db_name)
 
 
-class DropTableView(LoginRequiredMixin, View):
+class DropTableView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to drop tables."""
     def post(self, request, db_name, table_name):
         try:
             sql = SQLiteManager.drop_table(db_name, table_name)
@@ -181,13 +244,15 @@ class DropTableView(LoginRequiredMixin, View):
         return redirect('database_detail', db_name=db_name)
 
 
-class TableDetailView(LoginRequiredMixin, TemplateView):
+class TableDetailView(DatabaseReadPermissionMixin, TemplateView):
+    """Requires read permission to view table details."""
     template_name = 'table/detail.html'
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         db_name = kwargs['db_name']
         table_name = kwargs['table_name']
+        user = self.request.user
         
         page = int(self.request.GET.get('page', 1))
         per_page = int(self.request.GET.get('per_page', 50))
@@ -202,6 +267,11 @@ class TableDetailView(LoginRequiredMixin, TemplateView):
         
         indexes = SQLiteManager.get_table_indexes(db_name, table_name)
         
+        # Determine user's permission level for UI display
+        is_owner = DatabaseOwnership.is_owner(user, db_name)
+        is_admin = user.is_superuser or user.is_staff
+        can_write = is_owner or is_admin or DatabasePermission.has_write_permission(user, db_name)
+        
         context['db_name'] = db_name
         context['table_name'] = table_name
         context['columns'] = columns
@@ -214,10 +284,14 @@ class TableDetailView(LoginRequiredMixin, TemplateView):
         context['total_pages'] = total_pages
         context['column_types'] = SQLiteManager.COLUMN_TYPES
         context['column_constraints'] = SQLiteManager.COLUMN_CONSTRAINTS
+        context['can_write'] = can_write
+        context['is_owner'] = is_owner
+        context['is_admin'] = is_admin
         return context
 
 
-class AddColumnView(LoginRequiredMixin, View):
+class AddColumnView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to add columns."""
     def post(self, request, db_name, table_name):
         column_name = request.POST.get('column_name', '').strip()
         column_type = request.POST.get('column_type', '').strip()
@@ -243,7 +317,8 @@ class AddColumnView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class DropColumnView(LoginRequiredMixin, View):
+class DropColumnView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to drop columns."""
     def post(self, request, db_name, table_name, column_name):
         try:
             sql = SQLiteManager.drop_column(db_name, table_name, column_name)
@@ -255,8 +330,8 @@ class DropColumnView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class ModifyColumnView(LoginRequiredMixin, View):
-    """Modify a column's type in a table."""
+class ModifyColumnView(DatabaseWritePermissionMixin, View):
+    """Modify a column's type in a table. Requires write permission."""
     def post(self, request, db_name, table_name, column_name):
         new_type = request.POST.get('new_type', '').strip()
         new_constraint = request.POST.get('new_constraint', '').strip()
@@ -275,8 +350,8 @@ class ModifyColumnView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class BulkAddColumnsView(LoginRequiredMixin, View):
-    """Add multiple columns to a table at once."""
+class BulkAddColumnsView(DatabaseWritePermissionMixin, View):
+    """Add multiple columns to a table at once. Requires write permission."""
     def post(self, request, db_name, table_name):
         col_names = request.POST.getlist('col_name[]')
         col_types = request.POST.getlist('col_type[]')
@@ -308,8 +383,8 @@ class BulkAddColumnsView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class BulkDropColumnsView(LoginRequiredMixin, View):
-    """Drop multiple columns from a table at once."""
+class BulkDropColumnsView(DatabaseWritePermissionMixin, View):
+    """Drop multiple columns from a table at once. Requires write permission."""
     def post(self, request, db_name, table_name):
         column_names = request.POST.getlist('columns[]')
         
@@ -328,7 +403,8 @@ class BulkDropColumnsView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class CreateIndexView(LoginRequiredMixin, View):
+class CreateIndexView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to create indexes."""
     def post(self, request, db_name, table_name):
         index_name = request.POST.get('index_name', '').strip()
         # Support both checkbox list and comma-separated input
@@ -353,7 +429,8 @@ class CreateIndexView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class DropIndexView(LoginRequiredMixin, View):
+class DropIndexView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to drop indexes."""
     def post(self, request, db_name, table_name, index_name):
         try:
             sql = SQLiteManager.drop_index(db_name, index_name)
@@ -366,7 +443,8 @@ class DropIndexView(LoginRequiredMixin, View):
 
 
 # Row Operations
-class InsertRowView(LoginRequiredMixin, View):
+class InsertRowView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to insert rows."""
     def get(self, request, db_name, table_name):
         columns = SQLiteManager.get_table_info(db_name, table_name)
         return render(request, 'table/insert_row.html', {
@@ -394,7 +472,8 @@ class InsertRowView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class UpdateRowView(LoginRequiredMixin, View):
+class UpdateRowView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to update rows."""
     def get(self, request, db_name, table_name, rowid):
         columns = SQLiteManager.get_table_info(db_name, table_name)
         column_names = [col[1] for col in columns]
@@ -434,7 +513,8 @@ class UpdateRowView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class DeleteRowView(LoginRequiredMixin, View):
+class DeleteRowView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to delete rows."""
     def post(self, request, db_name, table_name, rowid):
         try:
             sql = SQLiteManager.delete_row(db_name, table_name, rowid)
@@ -447,7 +527,8 @@ class DeleteRowView(LoginRequiredMixin, View):
 
 
 # Export Views
-class ExportTableView(LoginRequiredMixin, View):
+class ExportTableView(DatabaseReadPermissionMixin, View):
+    """Requires read permission to export table data."""
     def get(self, request, db_name, table_name):
         content = SQLiteManager.export_table_csv(db_name, table_name)
         response = HttpResponse(content, content_type='text/csv')
@@ -456,8 +537,8 @@ class ExportTableView(LoginRequiredMixin, View):
 
 
 # Import Views
-class ImportPreviewView(LoginRequiredMixin, View):
-    """Preview import file and detect missing columns."""
+class ImportPreviewView(DatabaseWritePermissionMixin, View):
+    """Preview import file and detect missing columns. Requires write permission."""
     def post(self, request, db_name, table_name):
         file = request.FILES.get('file')
         if not file:
@@ -510,8 +591,8 @@ class ImportPreviewView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class ImportWithColumnsView(LoginRequiredMixin, View):
-    """Add missing columns and then import data."""
+class ImportWithColumnsView(DatabaseWritePermissionMixin, View):
+    """Add missing columns and then import data. Requires write permission."""
     def post(self, request, db_name, table_name):
         action = request.POST.get('action', 'import_all')
         
@@ -565,7 +646,8 @@ class ImportWithColumnsView(LoginRequiredMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
-class ImportDataView(LoginRequiredMixin, View):
+class ImportDataView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to import data."""
     def post(self, request, db_name, table_name):
         file = request.FILES.get('file')
         if not file:
@@ -592,12 +674,26 @@ class ImportDataView(LoginRequiredMixin, View):
 
 
 # Query Execution
-class ExecuteQueryView(LoginRequiredMixin, View):
+class ExecuteQueryView(DatabaseReadPermissionMixin, View):
+    """Execute SQL queries. Read permission required, write operations check additional permission."""
     def post(self, request, db_name):
         query = request.POST.get('query', '').strip()
         
         if not query:
             return JsonResponse({'error': 'No query provided'}, status=400)
+        
+        # Check if query modifies data (requires write permission)
+        query_upper = query.upper().strip()
+        is_write_query = any(query_upper.startswith(cmd) for cmd in [
+            'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE'
+        ])
+        
+        if is_write_query:
+            can_write, reason = DatabasePermissionChecker.can_access_database(
+                request.user, db_name, require_write=True
+            )
+            if not can_write:
+                return JsonResponse({'error': f'Write permission denied: {reason}'}, status=403)
         
         try:
             result = SQLiteManager.execute_query(db_name, query)
@@ -657,7 +753,8 @@ class QueryHistoryView(LoginRequiredMixin, TemplateView):
 
 
 # Table Schema View
-class TableSchemaView(LoginRequiredMixin, View):
+class TableSchemaView(DatabaseReadPermissionMixin, View):
+    """Requires read permission to view table schema."""
     def get(self, request, db_name, table_name):
         try:
             sql = SQLiteManager.get_table_schema(db_name, table_name)
@@ -963,8 +1060,8 @@ class ChartDataView(LoginRequiredMixin, View):
         return JsonResponse({'error': result['error']}, status=400)
 
 
-class DatabaseSchemaAPIView(LoginRequiredMixin, View):
-    """Get all tables and their columns for a database (for chart query helper)."""
+class DatabaseSchemaAPIView(DatabaseReadPermissionMixin, View):
+    """Get all tables and their columns for a database (for chart query helper). Requires read permission."""
     def get(self, request, db_name):
         try:
             if not SQLiteManager.database_exists(db_name):
@@ -992,3 +1089,139 @@ class DatabaseSchemaAPIView(LoginRequiredMixin, View):
             })
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=400)
+
+
+# Permission Management Views
+class DatabasePermissionsView(DatabaseOwnerOrAdminMixin, TemplateView):
+    """View and manage database permissions. Only owners and admins can access."""
+    template_name = 'database/permissions.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        db_name = kwargs['db_name']
+        
+        # Get current permissions
+        permissions = DatabasePermission.get_shared_users(db_name)
+        
+        # Get ownership info
+        owner = DatabaseOwnership.get_owner(db_name)
+        
+        # Get all users for the dropdown (exclude owner and already shared users)
+        shared_user_ids = [p.granted_to.id for p in permissions]
+        if owner:
+            shared_user_ids.append(owner.id)
+        available_users = User.objects.exclude(id__in=shared_user_ids).order_by('username')
+        
+        context['db_name'] = db_name
+        context['permissions'] = permissions
+        context['owner'] = owner
+        context['available_users'] = available_users
+        context['permission_choices'] = DatabasePermission.PERMISSION_CHOICES
+        context['is_owner'] = owner == self.request.user if owner else False
+        context['is_admin'] = self.request.user.is_superuser or self.request.user.is_staff
+        return context
+
+
+class GrantPermissionView(DatabaseOwnerOrAdminMixin, View):
+    """Grant permission to a user for a database."""
+    def post(self, request, db_name):
+        user_id = request.POST.get('user_id')
+        permission_level = request.POST.get('permission_level', 'read')
+        
+        if not user_id:
+            messages.error(request, 'Please select a user.')
+            return redirect('database_permissions', db_name=db_name)
+        
+        try:
+            user = User.objects.get(id=user_id)
+            
+            # Check if user is the owner (can't grant permission to owner)
+            if DatabaseOwnership.is_owner(user, db_name):
+                messages.error(request, 'Cannot grant permission to the database owner.')
+                return redirect('database_permissions', db_name=db_name)
+            
+            DatabasePermission.grant_permission(
+                database_name=db_name,
+                granted_by=request.user,
+                granted_to=user,
+                permission_level=permission_level
+            )
+            messages.success(request, f'Permission granted to {user.username}.')
+        except User.DoesNotExist:
+            messages.error(request, 'User not found.')
+        except Exception as e:
+            messages.error(request, f'Error granting permission: {str(e)}')
+        
+        return redirect('database_permissions', db_name=db_name)
+
+
+class UpdatePermissionView(DatabaseOwnerOrAdminMixin, View):
+    """Update a user's permission level."""
+    def post(self, request, db_name, user_id):
+        permission_level = request.POST.get('permission_level', 'read')
+        
+        try:
+            user = User.objects.get(id=user_id)
+            perm = DatabasePermission.objects.get(database_name=db_name, granted_to=user)
+            perm.permission_level = permission_level
+            perm.save()
+            messages.success(request, f'Permission updated for {user.username}.')
+        except User.DoesNotExist:
+            messages.error(request, 'User not found.')
+        except DatabasePermission.DoesNotExist:
+            messages.error(request, 'Permission not found.')
+        except Exception as e:
+            messages.error(request, f'Error updating permission: {str(e)}')
+        
+        return redirect('database_permissions', db_name=db_name)
+
+
+class RevokePermissionView(DatabaseOwnerOrAdminMixin, View):
+    """Revoke a user's permission for a database."""
+    def post(self, request, db_name, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            deleted, _ = DatabasePermission.revoke_permission(db_name, user)
+            if deleted:
+                messages.success(request, f'Permission revoked for {user.username}.')
+            else:
+                messages.warning(request, 'No permission found to revoke.')
+        except User.DoesNotExist:
+            messages.error(request, 'User not found.')
+        except Exception as e:
+            messages.error(request, f'Error revoking permission: {str(e)}')
+        
+        return redirect('database_permissions', db_name=db_name)
+
+
+class TransferOwnershipView(DatabaseOwnerOrAdminMixin, View):
+    """Transfer database ownership to another user. Only current owner or admin can do this."""
+    def post(self, request, db_name):
+        new_owner_id = request.POST.get('new_owner_id')
+        
+        if not new_owner_id:
+            messages.error(request, 'Please select a new owner.')
+            return redirect('database_permissions', db_name=db_name)
+        
+        try:
+            new_owner = User.objects.get(id=new_owner_id)
+            current_owner = DatabaseOwnership.get_owner(db_name)
+            
+            # Only the current owner or a superuser can transfer ownership
+            if current_owner != request.user and not request.user.is_superuser:
+                messages.error(request, 'Only the current owner or a superuser can transfer ownership.')
+                return redirect('database_permissions', db_name=db_name)
+            
+            # Transfer ownership
+            if DatabaseOwnership.transfer_ownership(db_name, new_owner):
+                # Remove any existing permission for the new owner (they're now the owner)
+                DatabasePermission.revoke_permission(db_name, new_owner)
+                messages.success(request, f'Ownership transferred to {new_owner.username}.')
+            else:
+                messages.error(request, 'Failed to transfer ownership.')
+        except User.DoesNotExist:
+            messages.error(request, 'User not found.')
+        except Exception as e:
+            messages.error(request, f'Error transferring ownership: {str(e)}')
+        
+        return redirect('database_permissions', db_name=db_name)

@@ -15,6 +15,13 @@ urlpatterns = [
     path('database/<str:db_name>/execute/', views.ExecuteQueryView.as_view(), name='execute_query'),
     path('database/<str:db_name>/history/', views.QueryHistoryView.as_view(), name='query_history'),
     
+    # Permission management
+    path('database/<str:db_name>/permissions/', views.DatabasePermissionsView.as_view(), name='database_permissions'),
+    path('database/<str:db_name>/permissions/grant/', views.GrantPermissionView.as_view(), name='grant_permission'),
+    path('database/<str:db_name>/permissions/update/<int:user_id>/', views.UpdatePermissionView.as_view(), name='update_permission'),
+    path('database/<str:db_name>/permissions/revoke/<int:user_id>/', views.RevokePermissionView.as_view(), name='revoke_permission'),
+    path('database/<str:db_name>/permissions/transfer/', views.TransferOwnershipView.as_view(), name='transfer_ownership'),
+    
     # Table operations
     path('database/<str:db_name>/create-table/', views.CreateTableView.as_view(), name='create_table'),
     path('database/<str:db_name>/table/<str:table_name>/', views.TableDetailView.as_view(), name='table_detail'),

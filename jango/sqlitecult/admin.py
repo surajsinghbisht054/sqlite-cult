@@ -1,5 +1,23 @@
 from django.contrib import admin
-from .models import DatabaseAccess, QueryHistory, Dashboard, DashboardChart
+from .models import DatabaseAccess, QueryHistory, Dashboard, DashboardChart, DatabaseOwnership, DatabasePermission
+
+
+@admin.register(DatabaseOwnership)
+class DatabaseOwnershipAdmin(admin.ModelAdmin):
+    list_display = ['database_name', 'owner', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['database_name', 'owner__username']
+    ordering = ['-created_at']
+    raw_id_fields = ['owner']
+
+
+@admin.register(DatabasePermission)
+class DatabasePermissionAdmin(admin.ModelAdmin):
+    list_display = ['database_name', 'granted_to', 'permission_level', 'granted_by', 'created_at']
+    list_filter = ['permission_level', 'created_at']
+    search_fields = ['database_name', 'granted_to__username', 'granted_by__username']
+    ordering = ['-created_at']
+    raw_id_fields = ['granted_to', 'granted_by']
 
 
 @admin.register(DatabaseAccess)
