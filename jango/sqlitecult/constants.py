@@ -38,6 +38,28 @@ PERMISSION_LEVELS = [
     ('admin', 'Full Access (Admin)'),
 ]
 
+# Object-level permissions for SqliteFile (used with django-guardian)
+# Format: (codename, description)
+SQLITE_FILE_PERMISSIONS = (
+    ('view_sqlitefile', 'Can view SQLite database'),
+    ('add_data_sqlitefile', 'Can add data to tables'),
+    ('change_data_sqlitefile', 'Can modify data in tables'),
+    ('delete_data_sqlitefile', 'Can delete data from tables'),
+)
+
+# API Permission flags
+API_PERMISSION_READ = 'read'
+API_PERMISSION_CREATE = 'create'
+API_PERMISSION_UPDATE = 'update'
+API_PERMISSION_DELETE = 'delete'
+
+API_PERMISSIONS = [
+    (API_PERMISSION_READ, 'Read'),
+    (API_PERMISSION_CREATE, 'Create'),
+    (API_PERMISSION_UPDATE, 'Update'),
+    (API_PERMISSION_DELETE, 'Delete'),
+]
+
 # Chart types for dashboards
 CHART_TYPES = [
     ('bar', 'Bar Chart'),
@@ -87,6 +109,10 @@ class ErrorMessages:
     API_DISABLED = "API access is disabled for this database."
     INVALID_API_KEY = "Invalid API Key."
     MISSING_API_KEY = "Missing API Key."
+    JWT_EXPIRED = "JWT token has expired."
+    JWT_INVALID = "Invalid JWT token."
+    JWT_MISSING = "Authorization header with JWT token is required."
+    API_PERMISSION_DENIED = "You do not have permission to perform this operation."
 
 
 # Success messages
@@ -110,5 +136,5 @@ class SuccessMessages:
     OWNERSHIP_CLAIMED = 'You are now the owner of "{name}".'
     API_ENABLED = "API access enabled."
     API_DISABLED = "API access disabled."
-    API_KEY_REGENERATED = "API Key regenerated."
+    API_TOKEN_REGENERATED = "API Token regenerated."
     IMPORT_SUCCESS = "Successfully imported {count} rows."

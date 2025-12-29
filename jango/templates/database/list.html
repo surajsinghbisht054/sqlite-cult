@@ -74,7 +74,7 @@
                 </div>
             </div>
         </div>
-        <a href="{% url 'database_detail' db.name %}" class="database-name">{{ db.name }}</a>
+        <a href="{% url 'database_detail' db.name %}" class="database-name">{{ db.display_name }}</a>
         <div class="database-meta">
             <span>{{ db.tables_count }} table{{ db.tables_count|pluralize }}</span>
             <span>{{ db.size|floatformat:1 }} KB</span>

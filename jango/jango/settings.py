@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'guardian',
     'sqlitecult',
 ]
 
@@ -153,6 +154,20 @@ LOGOUT_REDIRECT_URL = 'login'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Authentication backends (django-guardian for object-level permissions)
+AUTHENTICATION_BACKENDS = (
+    'django.contrib.auth.backends.ModelBackend',  # Default backend
+    'guardian.backends.ObjectPermissionBackend',   # Guardian backend for object-level permissions
+)
+
+# Guardian settings
+ANONYMOUS_USER_NAME = None  # Disable anonymous user
+
+# JWT Settings
+JWT_SECRET_KEY = SECRET_KEY  # Use Django's SECRET_KEY for JWT signing
+JWT_ALGORITHM = 'HS256'
+JWT_EXPIRATION_DAYS = 365  # API tokens valid for 1 year
 
 STORAGES = {
     # ...

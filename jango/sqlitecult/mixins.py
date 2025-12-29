@@ -8,7 +8,7 @@ from django.shortcuts import redirect
 from django.contrib import messages
 from django.http import JsonResponse
 
-from .models import DatabasePermissionChecker, DatabaseOwnership, DatabasePermission
+from .models import DatabasePermissionChecker, SqliteFile
 
 
 class DatabasePermissionMixin(LoginRequiredMixin):
@@ -95,7 +95,10 @@ class DatabaseOwnerOrAdminMixin(LoginRequiredMixin):
         if request.user.is_superuser or request.user.is_staff:
             return True
         
-        return DatabaseOwnership.is_owner(request.user, db_name)
+        sqlite_file = SqliteFile.get_by_actual_filename(db_name)
+        if sqlite_file:
+            return sqlite_file.owner == request.user
+        return False
     
     def dispatch(self, request, *args, **kwargs):
         response = super().dispatch(request, *args, **kwargs)

@@ -4,18 +4,284 @@ import json
 import csv
 import io
 import secrets
+import uuid
 from pathlib import Path
 from contextlib import contextmanager
 from django.db import models
 from django.contrib.auth.models import User
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from guardian.shortcuts import assign_perm, remove_perm, get_users_with_perms, get_perms
+
+
+def generate_unique_filename():
+    """Generate a unique filename for SQLite database files."""
+    return f"db_{uuid.uuid4().hex[:16]}"
+
+
+class SqliteFile(models.Model):
+    """
+    Represents an SQLite database file.
+    Uses django-guardian for object-level permissions.
+    """
+    # Unique internal filename (hidden from users, auto-generated)
+    filename = models.CharField(
+        max_length=64, 
+        unique=True, 
+        editable=False,
+        help_text="Internal unique filename for the SQLite file"
+    )
+    
+    # User-friendly display name
+    name = models.CharField(
+        max_length=255,
+        help_text="Display name for the database"
+    )
+    
+    # Owner of the database
+    owner = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='owned_sqlite_files'
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # API Configuration
+    api_enabled = models.BooleanField(default=False)
+    api_token = models.TextField(blank=True, null=True, help_text="JWT token for API access")
+    api_permissions = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of permissions for API: read, create, update, delete"
+    )
+    
+    class Meta:
+        verbose_name = 'SQLite File'
+        verbose_name_plural = 'SQLite Files'
+        ordering = ['-created_at']
+        # Define custom permissions for django-guardian
+        permissions = (
+            ('view_database', 'Can view SQLite database'),
+            ('add_data', 'Can add data to tables'),
+            ('change_data', 'Can modify data in tables'),
+            ('delete_data', 'Can delete data from tables'),
+        )
+    
+    def __str__(self):
+        return f"{self.name} (owned by {self.owner.username})"
+    
+    def save(self, *args, **kwargs):
+        if not self.filename:
+            self.filename = generate_unique_filename()
+        super().save(*args, **kwargs)
+    
+    def get_file_path(self):
+        """Get the full path to the SQLite file."""
+        return SQLiteManager.get_database_path(f"{self.filename}.db")
+    
+    def get_actual_filename(self):
+        """Get the actual filename with extension."""
+        return f"{self.filename}.db"
+    
+    # Permission Management Methods
+    def grant_permission(self, user, permission):
+        """
+        Grant a specific permission to a user.
+        
+        Args:
+            user: The user to grant permission to
+            permission: One of 'view_database', 'add_data', 'change_data', 'delete_data'
+        """
+        assign_perm(permission, user, self)
+    
+    def revoke_permission(self, user, permission):
+        """Revoke a specific permission from a user."""
+        remove_perm(permission, user, self)
+    
+    def revoke_all_permissions(self, user):
+        """Revoke all permissions from a user."""
+        for perm in ['view_database', 'add_data', 'change_data', 'delete_data']:
+            remove_perm(perm, user, self)
+    
+    def get_users_with_permissions(self):
+        """Get all users who have any permissions on this database."""
+        return get_users_with_perms(self, attach_perms=True)
+    
+    def get_user_permissions(self, user):
+        """Get all permissions a specific user has on this database."""
+        return get_perms(user, self)
+    
+    def user_can_view(self, user):
+        """Check if user can view this database."""
+        if self._is_privileged_user(user):
+            return True
+        return user.has_perm('view_database', self)
+    
+    def user_can_add(self, user):
+        """Check if user can add data to this database."""
+        if self._is_privileged_user(user):
+            return True
+        return user.has_perm('add_data', self)
+    
+    def user_can_change(self, user):
+        """Check if user can modify data in this database."""
+        if self._is_privileged_user(user):
+            return True
+        return user.has_perm('change_data', self)
+    
+    def user_can_delete(self, user):
+        """Check if user can delete data from this database."""
+        if self._is_privileged_user(user):
+            return True
+        return user.has_perm('delete_data', self)
+    
+    def user_can_write(self, user):
+        """Check if user can perform any write operation."""
+        if self._is_privileged_user(user):
+            return True
+        return any([
+            user.has_perm('add_data', self),
+            user.has_perm('change_data', self),
+            user.has_perm('delete_data', self)
+        ])
+    
+    def _is_privileged_user(self, user):
+        """Check if user is owner, superuser, or staff."""
+        return user.is_superuser or user.is_staff or self.owner == user
+    
+    # API Token Management
+    def generate_api_token(self):
+        """Generate a new JWT token for API access."""
+        from .jwt_utils import JWTManager
+        
+        permissions = self.api_permissions if self.api_permissions else []
+        self.api_token = JWTManager.generate_token(
+            sqlite_file_id=self.id,
+            database_name=self.name,
+            permissions=permissions
+        )
+        self.save(update_fields=['api_token'])
+        return self.api_token
+    
+    def regenerate_api_token(self):
+        """Regenerate the API token with current permissions."""
+        return self.generate_api_token()
+    
+    def update_api_permissions(self, permissions):
+        """
+        Update API permissions and regenerate token.
+        
+        Args:
+            permissions: List of permissions (read, create, update, delete)
+        """
+        self.api_permissions = permissions
+        self.save(update_fields=['api_permissions'])
+        if self.api_enabled:
+            self.generate_api_token()
+    
+    def enable_api(self, permissions=None):
+        """Enable API access with specified permissions."""
+        if permissions is None:
+            permissions = ['read']  # Default to read-only
+        self.api_enabled = True
+        self.api_permissions = permissions
+        self.save(update_fields=['api_enabled', 'api_permissions'])
+        self.generate_api_token()
+    
+    def disable_api(self):
+        """Disable API access."""
+        self.api_enabled = False
+        self.api_token = None
+        self.save(update_fields=['api_enabled', 'api_token'])
+    
+    # Class methods for querying
+    @classmethod
+    def get_by_filename(cls, filename):
+        """Get SqliteFile by internal filename (without extension)."""
+        filename = filename.replace('.db', '').replace('.sqlite', '').replace('.sqlite3', '')
+        return cls.objects.filter(filename=filename).first()
+    
+    @classmethod
+    def get_by_actual_filename(cls, actual_filename):
+        """Get SqliteFile by actual filename (with extension)."""
+        filename = actual_filename
+        for ext in ['.db', '.sqlite', '.sqlite3']:
+            filename = filename.replace(ext, '')
+        return cls.objects.filter(filename=filename).first()
+    
+    @classmethod
+    def get_accessible_for_user(cls, user):
+        """
+        Get all databases accessible to a user.
+        
+        For superusers/staff: returns all databases
+        For regular users: returns owned databases + databases with view permission
+        """
+        if user.is_superuser or user.is_staff:
+            return cls.objects.all()
+        
+        # Get owned databases
+        owned = cls.objects.filter(owner=user)
+        
+        # Get databases with view permission using guardian
+        from guardian.shortcuts import get_objects_for_user
+        with_permission = get_objects_for_user(user, 'sqlitecult.view_database', klass=cls)
+        
+        # Combine and deduplicate
+        return (owned | with_permission).distinct()
+    
+    @classmethod
+    def create_database(cls, user, name):
+        """
+        Create a new database with the given name.
+        
+        Args:
+            user: The owner of the database
+            name: Display name for the database
+            
+        Returns:
+            tuple: (SqliteFile instance, success boolean, message)
+        """
+        # Create the model instance first
+        sqlite_file = cls(owner=user, name=name)
+        sqlite_file.save()  # This will generate the unique filename
+        
+        # Now create the actual SQLite file
+        db_path = sqlite_file.get_file_path()
+        if db_path.exists():
+            # Shouldn't happen due to unique filename, but handle it
+            sqlite_file.delete()
+            return None, False, "Database file already exists"
+        
+        try:
+            with SQLiteManager.get_connection(sqlite_file.get_actual_filename()) as conn:
+                pass  # Just creating the connection creates the database
+            return sqlite_file, True, "Database created successfully"
+        except Exception as e:
+            sqlite_file.delete()
+            return None, False, str(e)
+    
+    def delete_database(self):
+        """Delete the database file and the model instance."""
+        db_path = self.get_file_path()
+        if db_path.exists():
+            os.remove(db_path)
+        self.delete()
+    
+    def transfer_ownership(self, new_owner):
+        """Transfer ownership to another user."""
+        self.owner = new_owner
+        self.save(update_fields=['owner'])
 
 
 class DatabasePermissionChecker:
     """
     Centralized permission checking for database operations.
     Handles the authorization logic for all database access.
+    Now works with SqliteFile model and django-guardian.
     """
     
     @staticmethod
@@ -24,48 +290,52 @@ class DatabasePermissionChecker:
         return user.is_superuser or user.is_staff
     
     @staticmethod
+    def get_sqlite_file(database_name):
+        """Get SqliteFile instance by actual filename."""
+        return SqliteFile.get_by_actual_filename(database_name)
+    
+    @staticmethod
     def can_access_database(user, database_name, require_write=False, require_admin=False):
         """
         Check if a user can access a database.
         
         Args:
             user: The user requesting access
-            database_name: The name of the database
-            require_write: If True, requires write permission (for modifying data)
-            require_admin: If True, requires admin permission (for deleting database)
+            database_name: The actual filename of the database
+            require_write: If True, requires write permission
+            require_admin: If True, requires owner/admin access
         
         Returns:
             tuple: (can_access: bool, reason: str)
         """
-        # Import here to avoid circular imports
-        from .models import DatabaseOwnership, DatabasePermission
-        
         # Superusers and staff can access everything
         if user.is_superuser or user.is_staff:
             return True, "Admin access"
         
-        # Check if user is the owner
-        if DatabaseOwnership.is_owner(user, database_name):
-            return True, "Owner access"
+        sqlite_file = DatabasePermissionChecker.get_sqlite_file(database_name)
         
-        # Check shared permissions
-        perm_level = DatabasePermission.get_permission_level(user, database_name)
-        
-        if perm_level is None:
+        if not sqlite_file:
+            # Legacy database without SqliteFile record
             return False, "No access permission"
         
+        # Check if user is the owner
+        if sqlite_file.owner == user:
+            return True, "Owner access"
+        
         if require_admin:
-            if perm_level == 'admin':
-                return True, "Admin permission"
+            # Only owner/superuser/staff can perform admin operations
             return False, "Admin permission required"
         
         if require_write:
-            if perm_level in ['write', 'admin']:
+            if sqlite_file.user_can_write(user):
                 return True, "Write permission"
             return False, "Write permission required"
         
-        # Read access is enough
-        return True, f"{perm_level.capitalize()} permission"
+        # Check view permission
+        if sqlite_file.user_can_view(user):
+            return True, "View permission"
+        
+        return False, "No access permission"
     
     @staticmethod
     def get_accessible_databases(user):
@@ -73,61 +343,34 @@ class DatabasePermissionChecker:
         Get list of databases a user can access.
         
         Returns:
-            list: List of database names the user can access
+            tuple: (list of actual filenames, has_full_access boolean)
         """
-        from .models import DatabaseOwnership, DatabasePermission
-        
-        # Superusers and staff can access all databases
         if user.is_superuser or user.is_staff:
-            return SQLiteManager.list_databases(), True  # True indicates "all access"
+            return SQLiteManager.list_databases(), True
         
-        accessible = set()
-        
-        # Add owned databases
-        owned = DatabaseOwnership.objects.filter(owner=user).values_list('database_name', flat=True)
-        accessible.update(owned)
-        
-        # Add shared databases
-        shared = DatabasePermission.objects.filter(granted_to=user).values_list('database_name', flat=True)
-        accessible.update(shared)
+        accessible_files = SqliteFile.get_accessible_for_user(user)
+        accessible = [sf.get_actual_filename() for sf in accessible_files]
         
         # Filter to only include databases that actually exist
         existing = set(SQLiteManager.list_databases())
-        accessible = accessible.intersection(existing)
+        accessible = [db for db in accessible if db in existing]
         
-        return list(accessible), False  # False indicates "limited access"
+        return accessible, False
     
     @staticmethod
-    def check_database_name_available(user, database_name):
+    def check_database_name_available(user, name):
         """
         Check if a database name is available for a user to use.
+        
+        Note: With the new SqliteFile model, the actual filename is auto-generated
+        and unique. This method checks if the display name is already in use by the user.
         
         Returns:
             tuple: (is_available: bool, error_message: str or None)
         """
-        from .models import DatabaseOwnership
-        
-        # Check if database file already exists
-        db_path = SQLiteManager.get_database_path(database_name)
-        if db_path.exists():
-            # Check who owns it
-            owner = DatabaseOwnership.get_owner(database_name)
-            if owner:
-                if owner == user:
-                    return False, "You already own a database with this name."
-                return False, f"This database name is already in use by another user."
-            else:
-                # Database file exists but no ownership record (legacy database)
-                # Superusers can claim it
-                if user.is_superuser or user.is_staff:
-                    return True, None
-                return False, "This database name is already in use."
-        
-        # Check ownership records (in case file was deleted but record exists)
-        if DatabaseOwnership.database_name_exists(database_name):
-            owner = DatabaseOwnership.get_owner(database_name)
-            if owner and owner != user:
-                return False, "This database name is reserved by another user."
+        # Check if user already has a database with this name
+        if SqliteFile.objects.filter(owner=user, name=name).exists():
+            return False, "You already have a database with this name."
         
         return True, None
 
@@ -412,10 +655,43 @@ class SQLiteManager:
         return sql_statements
     
     @staticmethod
-    def get_csv_columns(content):
-        """Get column names from CSV content."""
-        reader = csv.DictReader(io.StringIO(content))
-        return reader.fieldnames or []
+    def get_csv_columns(content, check_duplicates=False):
+        """Get column names from CSV content.
+        
+        Args:
+            content: CSV file content as string
+            check_duplicates: If True, raises ValueError on duplicate columns
+            
+        Returns:
+            List of column names (stripped of whitespace)
+            
+        Raises:
+            ValueError: If check_duplicates=True and duplicate columns found
+        """
+        # Use proper CSV parsing to get headers
+        reader = csv.reader(io.StringIO(content))
+        try:
+            raw_columns = next(reader)
+        except StopIteration:
+            return []
+        
+        # Strip whitespace from all column names
+        stripped_columns = [col.strip() for col in raw_columns]
+        
+        if check_duplicates:
+            # Check for duplicates after stripping
+            seen = {}
+            duplicates = []
+            for col in stripped_columns:
+                if col in seen:
+                    if col not in duplicates:
+                        duplicates.append(col)
+                seen[col] = True
+            
+            if duplicates:
+                raise ValueError(f"Duplicate column names found in CSV: {', '.join(duplicates)}")
+        
+        return stripped_columns
     
     # Index Operations
     @staticmethod
@@ -549,7 +825,10 @@ class SQLiteManager:
         if not data:
             return 0
         
-        columns = list(data[0].keys())
+        # Get original columns and create stripped versions
+        original_columns = list(data[0].keys())
+        columns = [col.strip() for col in original_columns]
+        
         placeholders = ', '.join(['?' for _ in columns])
         cols_str = ', '.join([f'"{c}"' for c in columns])
         sql = f'INSERT INTO "{table_name}" ({cols_str}) VALUES ({placeholders})'
@@ -565,7 +844,8 @@ class SQLiteManager:
             
             for row_num, row in enumerate(data, start=2):  # Start at 2 (1 is header)
                 try:
-                    values = [row.get(col) for col in columns]
+                    # Use original column names to get values from row dict
+                    values = [row.get(orig_col) for orig_col in original_columns]
                     cursor.execute(sql, values)
                 except Exception as e:
                     error_msg = str(e)
@@ -576,8 +856,9 @@ class SQLiteManager:
                     # Show the problematic row data
                     row_data = []
                     for i, col in enumerate(columns):
-                        value = row.get(col, '')
-                        if len(value) > 50:
+                        orig_col = original_columns[i]
+                        value = row.get(orig_col, '')
+                        if value and len(value) > 50:
                             value = value[:47] + '...'
                         row_data.append(f"{col}='{value}'")
                     details.append(f"  Data: {{{', '.join(row_data)}}}")
@@ -605,162 +886,6 @@ class SQLiteManager:
     from .constants import COLUMN_TYPES as _COLUMN_TYPES, COLUMN_CONSTRAINTS as _COLUMN_CONSTRAINTS
     COLUMN_TYPES = _COLUMN_TYPES
     COLUMN_CONSTRAINTS = _COLUMN_CONSTRAINTS
-
-
-class DatabaseOwnership(models.Model):
-    """
-    Track ownership of SQLite database files.
-    The owner is the user who created the database.
-    """
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_databases')
-    database_name = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    api_enabled = models.BooleanField(default=False)
-    api_secret_key = models.CharField(max_length=64, blank=True, null=True)
-    
-    class Meta:
-        verbose_name_plural = 'Database Ownerships'
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"{self.database_name} (owned by {self.owner.username})"
-    
-    def generate_api_key(self):
-        """Generate a new API key."""
-        self.api_secret_key = secrets.token_urlsafe(32)
-        self.save()
-        return self.api_secret_key
-
-    @classmethod
-    def get_owner(cls, database_name):
-        """Get the owner of a database."""
-        try:
-            ownership = cls.objects.get(database_name=database_name)
-            return ownership.owner
-        except cls.DoesNotExist:
-            return None
-    
-    @classmethod
-    def is_owner(cls, user, database_name):
-        """Check if user is the owner of a database."""
-        return cls.objects.filter(owner=user, database_name=database_name).exists()
-    
-    @classmethod
-    def create_ownership(cls, user, database_name):
-        """Create ownership record for a new database."""
-        return cls.objects.create(owner=user, database_name=database_name)
-    
-    @classmethod
-    def transfer_ownership(cls, database_name, new_owner):
-        """Transfer ownership of a database to another user."""
-        try:
-            ownership = cls.objects.get(database_name=database_name)
-            ownership.owner = new_owner
-            ownership.save()
-            return True
-        except cls.DoesNotExist:
-            # Create ownership record for legacy database
-            cls.objects.create(owner=new_owner, database_name=database_name)
-            return True
-    
-    @classmethod
-    def database_name_exists(cls, database_name):
-        """Check if a database name is already registered (owned by someone)."""
-        return cls.objects.filter(database_name=database_name).exists()
-    
-    @classmethod
-    def claim_ownership(cls, user, database_name):
-        """Claim ownership of a legacy database (one without an owner record)."""
-        if cls.objects.filter(database_name=database_name).exists():
-            return False, "Database already has an owner"
-        if not SQLiteManager.database_exists(database_name):
-            return False, "Database does not exist"
-        cls.objects.create(owner=user, database_name=database_name)
-        return True, "Ownership claimed successfully"
-
-
-class DatabasePermission(models.Model):
-    """
-    Manage shared permissions for databases.
-    Allows database owners to share access with other users.
-    """
-    # Import from constants for DRY
-    from .constants import PERMISSION_LEVELS
-    PERMISSION_CHOICES = PERMISSION_LEVELS
-    
-    database_name = models.CharField(max_length=255)
-    granted_to = models.ForeignKey(User, on_delete=models.CASCADE, related_name='database_permissions')
-    granted_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='permissions_granted')
-    permission_level = models.CharField(max_length=10, choices=PERMISSION_CHOICES, default='read')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        verbose_name_plural = 'Database Permissions'
-        unique_together = ['database_name', 'granted_to']
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"{self.granted_to.username} -> {self.database_name} ({self.permission_level})"
-    
-    @classmethod
-    def get_permission_level(cls, user, database_name):
-        """Get user's permission level for a database."""
-        try:
-            perm = cls.objects.get(granted_to=user, database_name=database_name)
-            return perm.permission_level
-        except cls.DoesNotExist:
-            return None
-    
-    @classmethod
-    def has_read_permission(cls, user, database_name):
-        """Check if user has at least read permission."""
-        return cls.objects.filter(
-            granted_to=user,
-            database_name=database_name,
-            permission_level__in=['read', 'write', 'admin']
-        ).exists()
-    
-    @classmethod
-    def has_write_permission(cls, user, database_name):
-        """Check if user has at least write permission."""
-        return cls.objects.filter(
-            granted_to=user,
-            database_name=database_name,
-            permission_level__in=['write', 'admin']
-        ).exists()
-    
-    @classmethod
-    def has_admin_permission(cls, user, database_name):
-        """Check if user has admin permission."""
-        return cls.objects.filter(
-            granted_to=user,
-            database_name=database_name,
-            permission_level='admin'
-        ).exists()
-    
-    @classmethod
-    def grant_permission(cls, database_name, granted_by, granted_to, permission_level='read'):
-        """Grant permission to a user for a database."""
-        perm, created = cls.objects.update_or_create(
-            database_name=database_name,
-            granted_to=granted_to,
-            defaults={
-                'granted_by': granted_by,
-                'permission_level': permission_level
-            }
-        )
-        return perm
-    
-    @classmethod
-    def revoke_permission(cls, database_name, user):
-        """Revoke user's permission for a database."""
-        return cls.objects.filter(database_name=database_name, granted_to=user).delete()
-    
-    @classmethod
-    def get_shared_users(cls, database_name):
-        """Get all users who have been granted permission to a database."""
-        return cls.objects.filter(database_name=database_name).select_related('granted_to', 'granted_by')
 
 
 class DatabaseAccess(models.Model):

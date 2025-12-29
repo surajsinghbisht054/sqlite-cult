@@ -4,7 +4,7 @@ Contains business logic separated from views for better testability and reusabil
 """
 from django.contrib.auth.models import User
 from .models import (
-    SQLiteManager, DatabaseOwnership, DatabasePermission, 
+    SQLiteManager, SqliteFile,
     DatabaseAccess, QueryHistory, Dashboard, DashboardChart
 )
 from .constants import ErrorMessages, SuccessMessages, WRITE_SQL_COMMANDS
@@ -25,11 +25,20 @@ class PermissionService:
         Returns:
             dict: Permission context with is_owner, is_admin, can_write, can_manage, has_owner
         """
-        is_owner = DatabaseOwnership.is_owner(user, db_name)
+        sqlite_file = SqliteFile.get_by_actual_filename(db_name)
+        
         is_admin = user.is_superuser or user.is_staff
-        can_write = is_owner or is_admin or DatabasePermission.has_write_permission(user, db_name)
-        can_manage = is_owner or is_admin
-        has_owner = DatabaseOwnership.get_owner(db_name) is not None
+        
+        if sqlite_file:
+            is_owner = sqlite_file.owner == user
+            can_write = is_owner or is_admin or sqlite_file.user_can_write(user)
+            can_manage = is_owner or is_admin
+            has_owner = True
+        else:
+            is_owner = False
+            can_write = is_admin
+            can_manage = is_admin
+            has_owner = False
         
         return {
             'is_owner': is_owner,
@@ -37,6 +46,7 @@ class PermissionService:
             'can_write': can_write,
             'can_manage': can_manage,
             'has_owner': has_owner,
+            'sqlite_file': sqlite_file,
         }
     
     @staticmethod
@@ -45,19 +55,21 @@ class PermissionService:
         Get API settings for a database.
         
         Returns:
-            dict: API settings with api_enabled and api_key
+            dict: API settings with api_enabled, api_token, and api_permissions
         """
-        try:
-            ownership = DatabaseOwnership.objects.get(database_name=db_name)
+        sqlite_file = SqliteFile.get_by_actual_filename(db_name)
+        
+        if sqlite_file:
             return {
-                'api_enabled': ownership.api_enabled,
-                'api_key': ownership.api_secret_key or '',
+                'api_enabled': sqlite_file.api_enabled,
+                'api_token': sqlite_file.api_token or '',
+                'api_permissions': sqlite_file.api_permissions or [],
             }
-        except DatabaseOwnership.DoesNotExist:
-            return {
-                'api_enabled': False,
-                'api_key': '',
-            }
+        return {
+            'api_enabled': False,
+            'api_token': '',
+            'api_permissions': [],
+        }
     
     @staticmethod
     def is_write_query(query):
@@ -242,15 +254,25 @@ class DatabaseService:
         db_info = []
         for db_name in accessible_db_names:
             info = SQLiteManager.get_database_info(db_name)
-            owner = DatabaseOwnership.get_owner(db_name)
+            sqlite_file = SqliteFile.get_by_actual_filename(db_name)
             
-            info['owner'] = owner.username if owner else 'Unknown'
-            info['is_owner'] = owner == user if owner else False
+            if sqlite_file:
+                info['owner'] = sqlite_file.owner.username
+                info['is_owner'] = sqlite_file.owner == user
+                info['display_name'] = sqlite_file.name
+            else:
+                info['owner'] = 'Unknown'
+                info['is_owner'] = False
+                info['display_name'] = db_name
+            
             info['is_admin'] = user.is_superuser or user.is_staff
             
             if not info['is_owner'] and not info['is_admin']:
-                perm_level = DatabasePermission.get_permission_level(user, db_name)
-                info['permission_level'] = perm_level
+                if sqlite_file:
+                    perms = sqlite_file.get_user_permissions(user)
+                    info['permission_level'] = 'write' if any(p in perms for p in ['add_data', 'change_data', 'delete_data']) else 'read'
+                else:
+                    info['permission_level'] = None
             else:
                 info['permission_level'] = 'owner' if info['is_owner'] else 'admin'
             
@@ -283,9 +305,11 @@ class DatabaseService:
         """
         Clean up all related records when a database is deleted.
         """
+        sqlite_file = SqliteFile.get_by_actual_filename(db_name)
+        if sqlite_file:
+            sqlite_file.delete()
+        
         DatabaseAccess.objects.filter(database_name=db_name).delete()
-        DatabaseOwnership.objects.filter(database_name=db_name).delete()
-        DatabasePermission.objects.filter(database_name=db_name).delete()
         QueryHistory.objects.filter(database_name=db_name).delete()
         DashboardChart.objects.filter(database_name=db_name).delete()
 

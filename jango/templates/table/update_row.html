@@ -7,7 +7,7 @@
 <div class="breadcrumb">
     <a href="{% url 'database_list' %}">Databases</a>
     <span class="breadcrumb-separator">/</span>
-    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    <a href="{% url 'database_detail' db_name %}">{{ display_name }}</a>
     <span class="breadcrumb-separator">/</span>
     <a href="{% url 'table_detail' db_name table_name %}">{{ table_name }}</a>
     <span class="breadcrumb-separator">/</span>

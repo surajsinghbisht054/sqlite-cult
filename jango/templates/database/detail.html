@@ -1,17 +1,17 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ db_name }} - SQLite Cult{% endblock %}
+{% block title %}{{ display_name }} - SQLite Cult{% endblock %}
 
 {% block content %}
 <div class="breadcrumb">
     <a href="{% url 'database_list' %}">Databases</a>
     <span class="breadcrumb-separator">/</span>
-    <span>{{ db_name }}</span>
+    <span>{{ display_name }}</span>
 </div>
 
 <div class="page-header">
     <div>
-        <h1 class="page-title">{{ db_name }}</h1>
+        <h1 class="page-title">{{ display_name }}</h1>
         <p class="page-subtitle">
             {{ tables|length }} table{{ tables|length|pluralize }}
             {% if is_owner %}
@@ -207,17 +207,46 @@
         <div class="card-body">
             <p style="margin-bottom: 1rem;">Enable API access to allow external applications (like n8n, Zapier, custom scripts) to perform CRUD operations on this database.</p>
             
-            <form method="post" action="{% url 'toggle_api' db_name %}">
+            <form method="post" action="{% url 'toggle_api' db_name %}" id="api-form">
                 {% csrf_token %}
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="toggle-switch" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
-                        <input type="checkbox" name="api_enabled" {% if api_enabled %}checked{% endif %} onchange="this.form.submit()" style="width: 20px; height: 20px;">
+                        <input type="checkbox" name="api_enabled" id="api-enabled-toggle" {% if api_enabled %}checked{% endif %} style="width: 20px; height: 20px;">
                         <span style="font-weight: 500;">{% if api_enabled %}API Enabled{% else %}API Disabled{% endif %}</span>
                         {% if api_enabled %}
                         <span class="badge" style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">ACTIVE</span>
                         {% endif %}
                     </label>
                 </div>
+                
+                <div id="api-permissions-section" style="{% if not api_enabled %}display: none;{% endif %} margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
+                    <h4 style="margin-bottom: 0.75rem;">API Permissions</h4>
+                    <p style="margin-bottom: 0.75rem; color: var(--text-secondary); font-size: 0.875rem;">
+                        Select what operations the API token can perform:
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="api_read" {% if 'read' in api_permissions %}checked{% endif %} style="width: 16px; height: 16px;">
+                            <span><strong>Read</strong> - GET requests</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="api_create" {% if 'create' in api_permissions %}checked{% endif %} style="width: 16px; height: 16px;">
+                            <span><strong>Create</strong> - POST requests</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="api_update" {% if 'update' in api_permissions %}checked{% endif %} style="width: 16px; height: 16px;">
+                            <span><strong>Update</strong> - PUT requests</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="api_delete" {% if 'delete' in api_permissions %}checked{% endif %} style="width: 16px; height: 16px;">
+                            <span><strong>Delete</strong> - DELETE requests</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">
+                    Save API Settings
+                </button>
             </form>
         </div>
     </div>
@@ -230,26 +259,51 @@
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
-                API Key
+                API Token (JWT)
             </h3>
         </div>
         <div class="card-body">
             <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-                <strong>⚠️ Keep this key secret!</strong> Anyone with this key can read and modify your database.
+                <strong>⚠️ Keep this token secret!</strong> Anyone with this token can access your database based on the permissions below.
             </p>
             <div class="input-group" style="display: flex; gap: 10px; margin-bottom: 1rem;">
-                <input type="password" value="{{ api_key }}" readonly class="form-input" id="apiKey" style="flex: 1; font-family: monospace;">
+                <input type="password" value="{{ api_token }}" readonly class="form-input" id="apiKey" style="flex: 1; font-family: monospace;">
                 <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility()">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="eyeIcon">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                         <circle cx="12" cy="12" r="3"></circle>
                     </svg>
                 </button>
-                <button type="button" class="btn btn-secondary" onclick="copyToClipboard(document.getElementById('apiKey').value); showToast('API Key copied!');">Copy</button>
+                <button type="button" class="btn btn-secondary" onclick="copyToClipboard(document.getElementById('apiKey').value); showToast('API Token copied!');">Copy</button>
                 <form method="post" action="{% url 'regenerate_api_key' db_name %}" style="display:inline;">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-warning" onclick="return confirm('Are you sure? All applications using the current key will stop working.')">Regenerate</button>
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('Are you sure? All applications using the current token will stop working.')">Regenerate</button>
                 </form>
+            </div>
+            
+            <!-- API Permissions -->
+            <div style="margin-top: 1.5rem;">
+                <h4 style="margin-bottom: 0.75rem;">API Permissions</h4>
+                <p style="margin-bottom: 0.75rem; color: var(--text-secondary); font-size: 0.875rem;">
+                    Current permissions embedded in this token:
+                </p>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    {% if 'read' in api_permissions %}
+                    <span class="badge" style="background: #3b82f6; color: white; padding: 4px 12px; border-radius: 4px;">Read</span>
+                    {% endif %}
+                    {% if 'create' in api_permissions %}
+                    <span class="badge" style="background: #10b981; color: white; padding: 4px 12px; border-radius: 4px;">Create</span>
+                    {% endif %}
+                    {% if 'update' in api_permissions %}
+                    <span class="badge" style="background: #f59e0b; color: white; padding: 4px 12px; border-radius: 4px;">Update</span>
+                    {% endif %}
+                    {% if 'delete' in api_permissions %}
+                    <span class="badge" style="background: #ef4444; color: white; padding: 4px 12px; border-radius: 4px;">Delete</span>
+                    {% endif %}
+                </div>
+                <p style="margin-top: 0.75rem; color: var(--text-secondary); font-size: 0.8rem;">
+                    To change permissions, disable and re-enable API access with new permissions.
+                </p>
             </div>
         </div>
     </div>
@@ -270,11 +324,11 @@
         <div class="card-body">
             <h4 style="margin-bottom: 0.5rem;">Authentication</h4>
             <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-                Include your API key in the <code>X-API-Key</code> header with every request.
+                Include your JWT token in the <code>Authorization</code> header with the <code>Bearer</code> prefix.
             </p>
             
             <div style="background: var(--bg-tertiary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-family: monospace; font-size: 0.875rem; overflow-x: auto;">
-                <code>curl -H "X-API-Key: YOUR_API_KEY" {{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/tables/</code>
+                <code>curl -H "Authorization: Bearer YOUR_JWT_TOKEN" {{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/tables/</code>
             </div>
 
             <h4 style="margin-bottom: 0.5rem;">Available Endpoints</h4>
@@ -284,6 +338,7 @@
                         <th>Method</th>
                         <th>Endpoint</th>
                         <th>Description</th>
+                        <th>Permission</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -291,31 +346,37 @@
                         <td><span class="badge" style="background: #3b82f6; color: white;">GET</span></td>
                         <td><code>/api/v1/database/{{ db_name }}/tables/</code></td>
                         <td>List all tables</td>
+                        <td><code>read</code></td>
                     </tr>
                     <tr>
                         <td><span class="badge" style="background: #3b82f6; color: white;">GET</span></td>
                         <td><code>/api/v1/database/{{ db_name }}/table/{table}/</code></td>
                         <td>List rows (supports <code>?limit=50&offset=0</code>)</td>
+                        <td><code>read</code></td>
                     </tr>
                     <tr>
                         <td><span class="badge" style="background: #10b981; color: white;">POST</span></td>
                         <td><code>/api/v1/database/{{ db_name }}/table/{table}/</code></td>
                         <td>Create a new row</td>
+                        <td><code>create</code></td>
                     </tr>
                     <tr>
                         <td><span class="badge" style="background: #3b82f6; color: white;">GET</span></td>
                         <td><code>/api/v1/database/{{ db_name }}/table/{table}/{rowid}/</code></td>
                         <td>Get a specific row</td>
+                        <td><code>read</code></td>
                     </tr>
                     <tr>
                         <td><span class="badge" style="background: #f59e0b; color: white;">PUT</span></td>
                         <td><code>/api/v1/database/{{ db_name }}/table/{table}/{rowid}/</code></td>
                         <td>Update a row</td>
+                        <td><code>update</code></td>
                     </tr>
                     <tr>
                         <td><span class="badge" style="background: #ef4444; color: white;">DELETE</span></td>
                         <td><code>/api/v1/database/{{ db_name }}/table/{table}/{rowid}/</code></td>
                         <td>Delete a row</td>
+                        <td><code>delete</code></td>
                     </tr>
                 </tbody>
             </table>
@@ -324,13 +385,13 @@
             
             <p style="font-weight: 500; margin-bottom: 0.25rem;">List all tables:</p>
             <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
-                <code>curl -X GET -H "X-API-Key: {{ api_key|truncatechars:20 }}..." \<br>
+                <code>curl -X GET -H "Authorization: Bearer {{ api_token|truncatechars:20 }}..." \<br>
                 &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/tables/</code>
             </div>
 
             <p style="font-weight: 500; margin-bottom: 0.25rem;">Create a new row:</p>
             <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
-                <code>curl -X POST -H "X-API-Key: YOUR_KEY" \<br>
+                <code>curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \<br>
                 &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
                 &nbsp;&nbsp;-d '{"name": "John", "email": "john@example.com"}' \<br>
                 &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/table/users/</code>
@@ -338,7 +399,7 @@
 
             <p style="font-weight: 500; margin-bottom: 0.25rem;">Update a row:</p>
             <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
-                <code>curl -X PUT -H "X-API-Key: YOUR_KEY" \<br>
+                <code>curl -X PUT -H "Authorization: Bearer YOUR_TOKEN" \<br>
                 &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
                 &nbsp;&nbsp;-d '{"email": "newemail@example.com"}' \<br>
                 &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/table/users/1/</code>
@@ -346,7 +407,7 @@
 
             <p style="font-weight: 500; margin-bottom: 0.25rem;">Delete a row:</p>
             <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 8px; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
-                <code>curl -X DELETE -H "X-API-Key: YOUR_KEY" \<br>
+                <code>curl -X DELETE -H "Authorization: Bearer YOUR_TOKEN" \<br>
                 &nbsp;&nbsp;{{ request.scheme }}://{{ request.get_host }}/api/v1/database/{{ db_name }}/table/users/1/</code>
             </div>
         </div>
@@ -553,6 +614,17 @@ function toggleApiKeyVisibility() {
         input.type = 'password';
         icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
     }
+}
+
+// Toggle API permissions section visibility
+const apiEnabledToggle = document.getElementById('api-enabled-toggle');
+if (apiEnabledToggle) {
+    apiEnabledToggle.addEventListener('change', function() {
+        const permSection = document.getElementById('api-permissions-section');
+        if (permSection) {
+            permSection.style.display = this.checked ? 'block' : 'none';
+        }
+    });
 }
 
 function executeQuery() {

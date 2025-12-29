@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ table_name }} - {{ db_name }} - SQLite Cult{% endblock %}
+{% block title %}{{ table_name }} - {{ display_name }} - SQLite Cult{% endblock %}
 
 {% block content %}
 <div class="breadcrumb">
     <a href="{% url 'database_list' %}">Databases</a>
     <span class="breadcrumb-separator">/</span>
-    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    <a href="{% url 'database_detail' db_name %}">{{ display_name }}</a>
     <span class="breadcrumb-separator">/</span>
     <span>{{ table_name }}</span>
 </div>
@@ -80,9 +80,10 @@
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                             </svg>
                         </button>
-                        <form method="post" action="{% url 'drop_column' db_name table_name col.1 %}" 
+                        <form method="post" action="{% url 'drop_column' db_name table_name %}" 
                               onsubmit="return confirm('Drop column {{ col.1 }}?')" style="display: inline;">
                             {% csrf_token %}
+                            <input type="hidden" name="column_name" value="{{ col.1 }}">
                             <button type="submit" class="btn-icon" title="Drop column">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -554,8 +555,9 @@
             <h3 class="modal-title">Modify Column Type</h3>
             <button class="modal-close" onclick="closeModal('modify-column-modal')">&times;</button>
         </div>
-        <form id="modify-column-form" method="post">
+        <form id="modify-column-form" method="post" action="{% url 'modify_column' db_name table_name %}">
             {% csrf_token %}
+            <input type="hidden" name="column_name" id="modify-column-name-hidden">
             <div class="modal-body">
                 <div class="message message-warning" style="margin-bottom: 1rem;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
@@ -647,11 +649,8 @@ function removeBulkColumnRow(btn) {
 // Modify Column Modal
 function openModifyColumnModal(columnName, currentType) {
     document.getElementById('modify-column-name').value = columnName;
+    document.getElementById('modify-column-name-hidden').value = columnName;
     document.getElementById('modify-column-current-type').value = currentType;
-    
-    // Set the form action with the column name
-    const form = document.getElementById('modify-column-form');
-    form.action = `/database/${dbName}/table/${tableName}/modify-column/${encodeURIComponent(columnName)}/`;
     
     // Try to select the current type in the dropdown
     const typeSelect = document.getElementById('modify-column-new-type');

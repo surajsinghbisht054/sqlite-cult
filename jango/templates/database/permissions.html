@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 
-{% block title %}Permissions - {{ db_name }} - SQLite Cult{% endblock %}
+{% block title %}Permissions - {{ display_name }} - SQLite Cult{% endblock %}
 
 {% block content %}
 <div class="breadcrumb">
     <a href="{% url 'database_list' %}">Databases</a>
     <span class="breadcrumb-separator">/</span>
-    <a href="{% url 'database_detail' db_name %}">{{ db_name }}</a>
+    <a href="{% url 'database_detail' db_name %}">{{ display_name }}</a>
     <span class="breadcrumb-separator">/</span>
     <span>Permissions</span>
 </div>
@@ -14,7 +14,7 @@
 <div class="page-header">
     <div>
         <h1 class="page-title">Manage Permissions</h1>
-        <p class="page-subtitle">Control who can access {{ db_name }}</p>
+        <p class="page-subtitle">Control who can access {{ display_name }}</p>
     </div>
     <a href="{% url 'database_detail' db_name %}" class="btn btn-ghost">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -98,9 +98,10 @@
             <thead>
                 <tr>
                     <th>User</th>
-                    <th>Permission Level</th>
-                    <th>Granted By</th>
-                    <th>Granted At</th>
+                    <th class="text-center">View</th>
+                    <th class="text-center">Add</th>
+                    <th class="text-center">Change</th>
+                    <th class="text-center">Delete</th>
                     <th style="width: 120px;">Actions</th>
                 </tr>
             </thead>
@@ -115,31 +116,38 @@
                                     <circle cx="12" cy="7" r="4"></circle>
                                 </svg>
                             </div>
-                            <span>{{ perm.granted_to.username }}</span>
-                            {% if perm.granted_to.is_superuser %}
+                            <span>{{ perm.user.username }}</span>
+                            {% if perm.user.is_superuser %}
                                 <span class="badge badge-primary">Superuser</span>
-                            {% elif perm.granted_to.is_staff %}
+                            {% elif perm.user.is_staff %}
                                 <span class="badge badge-info">Staff</span>
                             {% endif %}
                         </div>
                     </td>
-                    <td>
-                        <form method="post" action="{% url 'update_permission' db_name perm.granted_to.id %}" class="inline-form">
+                    <td class="text-center">
+                        <form method="post" action="{% url 'update_permission' db_name perm.user.id %}" class="inline-form perm-form" data-user="{{ perm.user.id }}">
                             {% csrf_token %}
-                            <select name="permission_level" class="form-select form-select-sm" onchange="this.form.submit()">
-                                {% for value, label in permission_choices %}
-                                <option value="{{ value }}" {% if perm.permission_level == value %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
+                            <input type="hidden" name="can_view" value="{% if perm.can_view %}on{% endif %}">
+                            <input type="hidden" name="can_add" value="{% if perm.can_add %}on{% endif %}">
+                            <input type="hidden" name="can_change" value="{% if perm.can_change %}on{% endif %}">
+                            <input type="hidden" name="can_delete" value="{% if perm.can_delete %}on{% endif %}">
                         </form>
+                        <input type="checkbox" class="perm-checkbox" data-user="{{ perm.user.id }}" data-perm="can_view" {% if perm.can_view %}checked{% endif %} onchange="updatePermission(this)">
                     </td>
-                    <td>{{ perm.granted_by.username }}</td>
-                    <td>{{ perm.created_at|date:"M d, Y H:i" }}</td>
+                    <td class="text-center">
+                        <input type="checkbox" class="perm-checkbox" data-user="{{ perm.user.id }}" data-perm="can_add" {% if perm.can_add %}checked{% endif %} onchange="updatePermission(this)">
+                    </td>
+                    <td class="text-center">
+                        <input type="checkbox" class="perm-checkbox" data-user="{{ perm.user.id }}" data-perm="can_change" {% if perm.can_change %}checked{% endif %} onchange="updatePermission(this)">
+                    </td>
+                    <td class="text-center">
+                        <input type="checkbox" class="perm-checkbox" data-user="{{ perm.user.id }}" data-perm="can_delete" {% if perm.can_delete %}checked{% endif %} onchange="updatePermission(this)">
+                    </td>
                     <td>
-                        <form method="post" action="{% url 'revoke_permission' db_name perm.granted_to.id %}" class="inline-form">
+                        <form method="post" action="{% url 'revoke_permission' db_name perm.user.id %}" class="inline-form">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-danger btn-sm" 
-                                    onclick="return confirm('Are you sure you want to revoke access for {{ perm.granted_to.username }}?')">
+                                    onclick="return confirm('Are you sure you want to revoke access for {{ perm.user.username }}?')">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="3 6 5 6 21 6"></polyline>
                                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -177,22 +185,26 @@
                 <line x1="12" y1="16" x2="12" y2="12"></line>
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
-            Permission Levels
+            Permission Types
         </h2>
     </div>
     <div class="card-body">
         <div class="permission-legend">
             <div class="permission-item">
-                <strong class="text-info">Read Only</strong>
+                <strong class="text-info">View</strong>
                 <p>Can view database schema, browse tables, export data, and run SELECT queries.</p>
             </div>
             <div class="permission-item">
-                <strong class="text-warning">Read & Write</strong>
-                <p>All read permissions plus: create/modify/drop tables, insert/update/delete rows, run any SQL query.</p>
+                <strong class="text-success">Add</strong>
+                <p>Can insert new rows into tables. Requires View permission.</p>
             </div>
             <div class="permission-item">
-                <strong class="text-success">Full Access (Admin)</strong>
-                <p>All write permissions plus: manage permissions, share with other users. Cannot delete database or transfer ownership.</p>
+                <strong class="text-warning">Change</strong>
+                <p>Can update existing rows, create/modify tables and columns, create indexes. Requires View permission.</p>
+            </div>
+            <div class="permission-item">
+                <strong class="text-danger">Delete</strong>
+                <p>Can delete rows, drop tables, drop columns, and drop indexes. Requires View permission.</p>
             </div>
         </div>
     </div>
@@ -225,12 +237,29 @@
                     {% endif %}
                 </div>
                 <div class="form-group">
-                    <label for="permission_level" class="form-label">Permission Level</label>
-                    <select name="permission_level" id="permission_level" class="form-select" required>
-                        {% for value, label in permission_choices %}
-                        <option value="{{ value }}">{{ label }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label">Permissions</label>
+                    <div class="permission-checkboxes">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="can_view" checked>
+                            <span>View</span>
+                            <small>Browse tables, export data, run SELECT queries</small>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="can_add">
+                            <span>Add</span>
+                            <small>Insert new rows into tables</small>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="can_change">
+                            <span>Change</span>
+                            <small>Update rows, create/modify tables and columns</small>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="can_delete">
+                            <span>Delete</span>
+                            <small>Delete rows, drop tables and columns</small>
+                        </label>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -282,13 +311,13 @@
                         </option>
                         {% endfor %}
                         {% for perm in permissions %}
-                        <option value="{{ perm.granted_to.id }}">
-                            {{ perm.granted_to.username }}
-                            {% if perm.granted_to.first_name or perm.granted_to.last_name %}
-                                ({{ perm.granted_to.first_name }} {{ perm.granted_to.last_name }})
+                        <option value="{{ perm.user.id }}">
+                            {{ perm.user.username }}
+                            {% if perm.user.first_name or perm.user.last_name %}
+                                ({{ perm.user.first_name }} {{ perm.user.last_name }})
                             {% endif %}
-                            {% if perm.granted_to.is_superuser %} [Superuser]
-                            {% elif perm.granted_to.is_staff %} [Staff]
+                            {% if perm.user.is_superuser %} [Superuser]
+                            {% elif perm.user.is_staff %} [Staff]
                             {% endif %}
                         </option>
                         {% endfor %}
@@ -333,6 +362,8 @@
 .text-info { color: var(--info); }
 .text-warning { color: var(--warning); }
 .text-success { color: var(--success); }
+.text-danger { color: #ef4444; }
+.text-center { text-align: center; }
 .inline-form { display: inline; }
 .form-select-sm { 
     padding: 0.25rem 0.5rem; 
@@ -367,5 +398,63 @@
     flex-shrink: 0;
     margin-top: 0.125rem;
 }
+.perm-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+.permission-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--bg-tertiary);
+    border-radius: 0.5rem;
+    cursor: pointer;
+}
+.checkbox-label input {
+    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+}
+.checkbox-label span {
+    font-weight: 500;
+    display: block;
+}
+.checkbox-label small {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin-top: 0.125rem;
+}
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updatePermission(checkbox) {
+    const userId = checkbox.dataset.user;
+    const permName = checkbox.dataset.perm;
+    const form = document.querySelector(`.perm-form[data-user="${userId}"]`);
+    
+    // Update the hidden input value
+    const hiddenInput = form.querySelector(`input[name="${permName}"]`);
+    hiddenInput.value = checkbox.checked ? 'on' : '';
+    
+    // Collect all checkbox values for this user
+    const checkboxes = document.querySelectorAll(`.perm-checkbox[data-user="${userId}"]`);
+    checkboxes.forEach(cb => {
+        const input = form.querySelector(`input[name="${cb.dataset.perm}"]`);
+        input.value = cb.checked ? 'on' : '';
+    });
+    
+    // Submit the form
+    form.submit();
+}
+</script>
 {% endblock %}
