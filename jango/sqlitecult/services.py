@@ -2,12 +2,8 @@
 Service layer for SQLite Cult application.
 Contains business logic separated from views for better testability and reusability.
 """
-from django.contrib.auth.models import User
-from .models import (
-    SQLiteManager, SqliteFile,
-    DatabaseAccess, QueryHistory, Dashboard, DashboardChart
-)
-from .constants import ErrorMessages, SuccessMessages, WRITE_SQL_COMMANDS
+from .models import SQLiteManager, SqliteFile
+from .constants import WRITE_SQL_COMMANDS
 
 
 class PermissionService:
@@ -20,13 +16,11 @@ class PermissionService:
     def get_user_database_context(user, db_name):
         """
         Get common permission context for a user and database.
-        Reduces code duplication in views.
         
         Returns:
             dict: Permission context with is_owner, is_admin, can_write, can_manage, has_owner
         """
         sqlite_file = SqliteFile.get_by_actual_filename(db_name)
-        
         is_admin = user.is_superuser or user.is_staff
         
         if sqlite_file:
@@ -89,7 +83,6 @@ class PermissionService:
 class TableService:
     """
     Service for table-related operations.
-    Provides business logic for table management.
     """
     
     @staticmethod
@@ -136,12 +129,6 @@ class TableService:
         """
         Build column definition SQL from form data.
         
-        Args:
-            col_names: List of column names
-            col_types: List of column types
-            col_constraints: List of column constraints
-            col_defaults: List of default values
-            
         Returns:
             str: SQL column definitions
         """
@@ -178,8 +165,7 @@ class TableService:
 
 class RowService:
     """
-    Service for row operations.
-    Handles row serialization and deserialization.
+    Service for row serialization (used by API views).
     """
     
     @staticmethod
@@ -214,149 +200,3 @@ class RowService:
             list: List of row dictionaries
         """
         return [RowService.serialize_row(row, columns) for row in rows]
-    
-    @staticmethod
-    def extract_form_values(request, column_names):
-        """
-        Extract column values from a POST request.
-        
-        Args:
-            request: HTTP request object
-            column_names: List of column names to extract
-            
-        Returns:
-            list: List of values (None for empty strings)
-        """
-        values = []
-        for col in column_names:
-            val = request.POST.get(col, '')
-            values.append(val if val else None)
-        return values
-
-
-class DatabaseService:
-    """
-    Service for database-level operations.
-    """
-    
-    @staticmethod
-    def get_database_list_context(user):
-        """
-        Get database list with ownership info for a user.
-        
-        Returns:
-            list: List of database info dicts
-        """
-        from .models import DatabasePermissionChecker
-        
-        accessible_db_names, has_full_access = DatabasePermissionChecker.get_accessible_databases(user)
-        
-        db_info = []
-        for db_name in accessible_db_names:
-            info = SQLiteManager.get_database_info(db_name)
-            sqlite_file = SqliteFile.get_by_actual_filename(db_name)
-            
-            if sqlite_file:
-                info['owner'] = sqlite_file.owner.username
-                info['is_owner'] = sqlite_file.owner == user
-                info['display_name'] = sqlite_file.name
-            else:
-                info['owner'] = 'Unknown'
-                info['is_owner'] = False
-                info['display_name'] = db_name
-            
-            info['is_admin'] = user.is_superuser or user.is_staff
-            
-            if not info['is_owner'] and not info['is_admin']:
-                if sqlite_file:
-                    perms = sqlite_file.get_user_permissions(user)
-                    info['permission_level'] = 'write' if any(p in perms for p in ['add_data', 'change_data', 'delete_data']) else 'read'
-                else:
-                    info['permission_level'] = None
-            else:
-                info['permission_level'] = 'owner' if info['is_owner'] else 'admin'
-            
-            db_info.append(info)
-        
-        return db_info, has_full_access
-    
-    @staticmethod
-    def get_tables_context(db_name):
-        """
-        Get table information for a database.
-        
-        Returns:
-            list: List of table info dicts
-        """
-        tables = SQLiteManager.get_tables(db_name)
-        table_info = []
-        for table in tables:
-            columns = SQLiteManager.get_table_info(db_name, table)
-            row_count = SQLiteManager.get_row_count(db_name, table)
-            table_info.append({
-                'name': table,
-                'columns': columns,
-                'row_count': row_count
-            })
-        return table_info
-    
-    @staticmethod
-    def cleanup_database_records(db_name):
-        """
-        Clean up all related records when a database is deleted.
-        """
-        sqlite_file = SqliteFile.get_by_actual_filename(db_name)
-        if sqlite_file:
-            sqlite_file.delete()
-        
-        DatabaseAccess.objects.filter(database_name=db_name).delete()
-        QueryHistory.objects.filter(database_name=db_name).delete()
-        DashboardChart.objects.filter(database_name=db_name).delete()
-
-
-class QueryService:
-    """
-    Service for query execution and history.
-    """
-    
-    @staticmethod
-    def execute_and_log(user, db_name, query):
-        """
-        Execute a query and log it to history.
-        
-        Returns:
-            tuple: (success, result_or_error)
-        """
-        try:
-            result = SQLiteManager.execute_query(db_name, query)
-            QueryHistory.log_query(user, db_name, query)
-            return True, result
-        except Exception as e:
-            QueryHistory.log_query(user, db_name, query, False, str(e))
-            return False, str(e)
-
-
-class ImportService:
-    """
-    Service for import operations.
-    """
-    
-    @staticmethod
-    def preview_csv_import(db_name, table_name, file_content):
-        """
-        Preview a CSV import and detect missing columns.
-        
-        Returns:
-            dict: Preview data with file_columns, table_columns, missing_columns
-        """
-        file_columns = SQLiteManager.get_csv_columns(file_content)
-        table_columns_info = SQLiteManager.get_table_info(db_name, table_name)
-        table_columns = [col[1] for col in table_columns_info]
-        missing_columns = [col for col in file_columns if col not in table_columns]
-        
-        return {
-            'file_columns': file_columns,
-            'table_columns': table_columns,
-            'missing_columns': missing_columns,
-            'has_missing': len(missing_columns) > 0,
-        }

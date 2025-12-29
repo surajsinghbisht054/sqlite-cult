@@ -23,7 +23,7 @@ from .mixins import (
     DatabaseWritePermissionMixin, DatabaseAdminPermissionMixin,
     DatabaseOwnerOrAdminMixin
 )
-from .services import PermissionService, TableService, RowService
+from .services import PermissionService, TableService
 from .constants import (
     COLUMN_TYPES, COLUMN_CONSTRAINTS, ErrorMessages, SuccessMessages,
     API_PERMISSIONS
