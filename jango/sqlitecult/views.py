@@ -23,6 +23,10 @@ from .mixins import (
     DatabaseWritePermissionMixin, DatabaseAdminPermissionMixin,
     DatabaseOwnerOrAdminMixin
 )
+from .services import PermissionService, TableService, RowService
+from .constants import (
+    COLUMN_TYPES, COLUMN_CONSTRAINTS, ErrorMessages, SuccessMessages
+)
 
 
 # Authentication Views
@@ -154,44 +158,33 @@ class DatabaseDetailView(DatabaseReadPermissionMixin, TemplateView):
         
         DatabaseAccess.log_access(user, db_name)
         
+        # Get tables info
         tables = SQLiteManager.get_tables(db_name)
-        table_info = []
-        for table in tables:
-            columns = SQLiteManager.get_table_info(db_name, table)
-            row_count = SQLiteManager.get_row_count(db_name, table)
-            table_info.append({
+        table_info = [
+            {
                 'name': table,
-                'columns': columns,
-                'row_count': row_count
-            })
+                'columns': SQLiteManager.get_table_info(db_name, table),
+                'row_count': SQLiteManager.get_row_count(db_name, table)
+            }
+            for table in tables
+        ]
         
-        # Determine user's permission level for UI display
-        is_owner = DatabaseOwnership.is_owner(user, db_name)
-        is_admin = user.is_superuser or user.is_staff
-        can_write = is_owner or is_admin or DatabasePermission.has_write_permission(user, db_name)
-        can_manage = is_owner or is_admin
-        has_owner = DatabaseOwnership.get_owner(db_name) is not None
+        # Use service for permission context
+        perm_context = PermissionService.get_user_database_context(user, db_name)
         
         context['db_name'] = db_name
         context['tables'] = table_info
-        context['column_types'] = SQLiteManager.COLUMN_TYPES
-        context['column_constraints'] = SQLiteManager.COLUMN_CONSTRAINTS
-        context['is_owner'] = is_owner
-        context['is_admin'] = is_admin
-        context['can_write'] = can_write
-        context['can_manage'] = can_manage
-        context['has_owner'] = has_owner
+        context['column_types'] = COLUMN_TYPES
+        context['column_constraints'] = COLUMN_CONSTRAINTS
+        context.update(perm_context)
         
-        # Add API settings for owners
-        context['api_enabled'] = False
-        context['api_key'] = ''
-        if is_owner or is_admin:
-            try:
-                ownership = DatabaseOwnership.objects.get(database_name=db_name)
-                context['api_enabled'] = ownership.api_enabled
-                context['api_key'] = ownership.api_secret_key or ''
-            except DatabaseOwnership.DoesNotExist:
-                pass
+        # Add API settings for owners/admins
+        if perm_context['is_owner'] or perm_context['is_admin']:
+            api_settings = PermissionService.get_api_settings(db_name)
+            context.update(api_settings)
+        else:
+            context['api_enabled'] = False
+            context['api_key'] = ''
                 
         return context
 
@@ -206,27 +199,19 @@ class CreateTableView(DatabaseWritePermissionMixin, View):
         use_visual = request.POST.get('use_visual', 'false') == 'true'
         
         if use_visual:
-            # Build columns from visual form
+            # Build columns from visual form using service
             col_names = request.POST.getlist('col_name[]')
             col_types = request.POST.getlist('col_type[]')
             col_constraints = request.POST.getlist('col_constraint[]')
             col_defaults = request.POST.getlist('col_default[]')
             
             if not table_name or not col_names or not col_names[0]:
-                messages.error(request, 'Table name and at least one column are required.')
+                messages.error(request, ErrorMessages.REQUIRED_FIELDS)
                 return redirect('database_detail', db_name=db_name)
             
-            column_defs = []
-            for i, name in enumerate(col_names):
-                if name.strip():
-                    col_def = f'"{name.strip()}" {col_types[i]}'
-                    if col_constraints[i]:
-                        col_def += f' {col_constraints[i]}'
-                    if col_defaults[i]:
-                        col_def += f' DEFAULT {col_defaults[i]}'
-                    column_defs.append(col_def)
-            
-            columns = ', '.join(column_defs)
+            columns = TableService.build_column_definitions(
+                col_names, col_types, col_constraints, col_defaults
+            )
         else:
             columns = request.POST.get('columns', '').strip()
         
@@ -237,7 +222,7 @@ class CreateTableView(DatabaseWritePermissionMixin, View):
         try:
             sql = SQLiteManager.create_table(db_name, table_name, columns)
             QueryHistory.log_query(request.user, db_name, sql)
-            messages.success(request, f'Table "{table_name}" created successfully.')
+            messages.success(request, SuccessMessages.TABLE_CREATED.format(name=table_name))
         except Exception as e:
             QueryHistory.log_query(request.user, db_name, f'CREATE TABLE {table_name}', False, str(e))
             messages.error(request, f'Error creating table: {str(e)}')
@@ -270,37 +255,21 @@ class TableDetailView(DatabaseReadPermissionMixin, TemplateView):
         
         page = int(self.request.GET.get('page', 1))
         per_page = int(self.request.GET.get('per_page', 50))
-        offset = (page - 1) * per_page
         
-        columns = SQLiteManager.get_table_info(db_name, table_name)
-        column_names = [col[1] for col in columns]
+        # Use TableService for table info and pagination
+        table_info = TableService.get_table_info_context(db_name, table_name)
+        pagination = TableService.get_paginated_rows(db_name, table_name, page, per_page)
         
-        rows = SQLiteManager.get_rows(db_name, table_name, per_page, offset)
-        total_rows = SQLiteManager.get_row_count(db_name, table_name)
-        total_pages = (total_rows + per_page - 1) // per_page
-        
-        indexes = SQLiteManager.get_table_indexes(db_name, table_name)
-        
-        # Determine user's permission level for UI display
-        is_owner = DatabaseOwnership.is_owner(user, db_name)
-        is_admin = user.is_superuser or user.is_staff
-        can_write = is_owner or is_admin or DatabasePermission.has_write_permission(user, db_name)
+        # Use PermissionService for permission context
+        perm_context = PermissionService.get_user_database_context(user, db_name)
         
         context['db_name'] = db_name
         context['table_name'] = table_name
-        context['columns'] = columns
-        context['column_names'] = column_names
-        context['rows'] = rows
-        context['indexes'] = indexes
-        context['page'] = page
-        context['per_page'] = per_page
-        context['total_rows'] = total_rows
-        context['total_pages'] = total_pages
-        context['column_types'] = SQLiteManager.COLUMN_TYPES
-        context['column_constraints'] = SQLiteManager.COLUMN_CONSTRAINTS
-        context['can_write'] = can_write
-        context['is_owner'] = is_owner
-        context['is_admin'] = is_admin
+        context['column_types'] = COLUMN_TYPES
+        context['column_constraints'] = COLUMN_CONSTRAINTS
+        context.update(table_info)
+        context.update(pagination)
+        context.update(perm_context)
         return context
 
 
@@ -372,15 +341,10 @@ class BulkAddColumnsView(DatabaseWritePermissionMixin, View):
         col_constraints = request.POST.getlist('col_constraint[]')
         col_defaults = request.POST.getlist('col_default[]')
         
-        columns = []
-        for i, name in enumerate(col_names):
-            if name.strip():
-                columns.append({
-                    'name': name.strip(),
-                    'type': col_types[i] if i < len(col_types) else 'TEXT',
-                    'constraint': col_constraints[i] if i < len(col_constraints) else '',
-                    'default': col_defaults[i] if i < len(col_defaults) else ''
-                })
+        # Use service to parse column data
+        columns = TableService.parse_column_data(
+            col_names, col_types, col_constraints, col_defaults
+        )
         
         if not columns:
             messages.error(request, 'At least one column is required.')
@@ -587,8 +551,8 @@ class ImportPreviewView(DatabaseWritePermissionMixin, View):
                     'file_columns': file_columns,
                     'table_columns': table_columns,
                     'missing_columns': missing_columns,
-                    'column_types': SQLiteManager.COLUMN_TYPES,
-                    'column_constraints': SQLiteManager.COLUMN_CONSTRAINTS,
+                    'column_types': COLUMN_TYPES,
+                    'column_constraints': COLUMN_CONSTRAINTS,
                 })
             else:
                 # No missing columns, proceed with import
@@ -620,21 +584,15 @@ class ImportWithColumnsView(DatabaseWritePermissionMixin, View):
         
         try:
             if action == 'add_columns':
-                # Add selected columns first
+                # Add selected columns first using TableService
                 col_names = request.POST.getlist('col_name[]')
                 col_types = request.POST.getlist('col_type[]')
                 col_constraints = request.POST.getlist('col_constraint[]')
                 col_defaults = request.POST.getlist('col_default[]')
                 
-                columns = []
-                for i, name in enumerate(col_names):
-                    if name.strip():
-                        columns.append({
-                            'name': name.strip(),
-                            'type': col_types[i] if i < len(col_types) else 'TEXT',
-                            'constraint': col_constraints[i] if i < len(col_constraints) else '',
-                            'default': col_defaults[i] if i < len(col_defaults) else ''
-                        })
+                columns = TableService.parse_column_data(
+                    col_names, col_types, col_constraints, col_defaults
+                )
                 
                 if columns:
                     sql_statements = SQLiteManager.add_columns_bulk(db_name, table_name, columns)
@@ -697,10 +655,7 @@ class ExecuteQueryView(DatabaseReadPermissionMixin, View):
             return JsonResponse({'error': 'No query provided'}, status=400)
         
         # Check if query modifies data (requires write permission)
-        query_upper = query.upper().strip()
-        is_write_query = any(query_upper.startswith(cmd) for cmd in [
-            'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE'
-        ])
+        is_write_query = PermissionService.is_write_query(query)
         
         if is_write_query:
             can_write, reason = DatabasePermissionChecker.can_access_database(

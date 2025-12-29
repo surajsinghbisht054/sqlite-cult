@@ -600,26 +600,11 @@ class SQLiteManager:
         
         return len(data)
     
-    # Column type options for UI dropdowns
-    COLUMN_TYPES = [
-        ('INTEGER', 'INTEGER'),
-        ('TEXT', 'TEXT'),
-        ('REAL', 'REAL'),
-        ('BLOB', 'BLOB'),
-        ('NUMERIC', 'NUMERIC'),
-        ('BOOLEAN', 'BOOLEAN'),
-        ('DATE', 'DATE'),
-        ('DATETIME', 'DATETIME'),
-        ('TIMESTAMP', 'TIMESTAMP'),
-    ]
-    
-    COLUMN_CONSTRAINTS = [
-        ('', 'None'),
-        ('NOT NULL', 'NOT NULL'),
-        ('UNIQUE', 'UNIQUE'),
-        ('PRIMARY KEY', 'PRIMARY KEY'),
-        ('PRIMARY KEY AUTOINCREMENT', 'PRIMARY KEY AUTOINCREMENT'),
-    ]
+    # Import column type options from constants for UI dropdowns
+    # (keeping for backward compatibility)
+    from .constants import COLUMN_TYPES as _COLUMN_TYPES, COLUMN_CONSTRAINTS as _COLUMN_CONSTRAINTS
+    COLUMN_TYPES = _COLUMN_TYPES
+    COLUMN_CONSTRAINTS = _COLUMN_CONSTRAINTS
 
 
 class DatabaseOwnership(models.Model):
@@ -699,11 +684,9 @@ class DatabasePermission(models.Model):
     Manage shared permissions for databases.
     Allows database owners to share access with other users.
     """
-    PERMISSION_CHOICES = [
-        ('read', 'Read Only'),
-        ('write', 'Read & Write'),
-        ('admin', 'Full Access (Admin)'),
-    ]
+    # Import from constants for DRY
+    from .constants import PERMISSION_LEVELS
+    PERMISSION_CHOICES = PERMISSION_LEVELS
     
     database_name = models.CharField(max_length=255)
     granted_to = models.ForeignKey(User, on_delete=models.CASCADE, related_name='database_permissions')
@@ -878,24 +861,10 @@ class DashboardChart(models.Model):
     """
     Store chart configurations for user dashboards.
     """
-    CHART_TYPES = [
-        ('bar', 'Bar Chart'),
-        ('line', 'Line Chart'),
-        ('pie', 'Pie Chart'),
-        ('doughnut', 'Doughnut Chart'),
-        ('polarArea', 'Polar Area Chart'),
-        ('radar', 'Radar Chart'),
-    ]
-    
-    REFRESH_CHOICES = [
-        (0, 'No auto-refresh'),
-        (30, '30 seconds'),
-        (60, '1 minute'),
-        (300, '5 minutes'),
-        (600, '10 minutes'),
-        (1800, '30 minutes'),
-        (3600, '1 hour'),
-    ]
+    # Import from constants for DRY (keeping as class attributes for Django model compatibility)
+    from .constants import CHART_TYPES as _CHART_TYPES, REFRESH_INTERVALS as _REFRESH_INTERVALS
+    CHART_TYPES = _CHART_TYPES
+    REFRESH_CHOICES = _REFRESH_INTERVALS
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='dashboard_charts')
     dashboard = models.ForeignKey(Dashboard, on_delete=models.CASCADE, related_name='charts', null=True, blank=True)
