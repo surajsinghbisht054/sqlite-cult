@@ -33,6 +33,7 @@ urlpatterns = [
     path('database/<str:db_name>/table/<str:table_name>/', views.TableDetailView.as_view(), name='table_detail'),
     path('database/<str:db_name>/table/<str:table_name>/drop/', views.DropTableView.as_view(), name='drop_table'),
     path('database/<str:db_name>/table/<str:table_name>/schema/', views.TableSchemaView.as_view(), name='table_schema'),
+    path('database/<str:db_name>/table/<str:table_name>/update-metadata/', views.UpdateTableMetadataView.as_view(), name='update_table_metadata'),
     
     # Column operations
     path('database/<str:db_name>/table/<str:table_name>/add-column/', views.AddColumnView.as_view(), name='add_column'),

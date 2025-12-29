@@ -148,6 +148,14 @@ class SqliteFile(models.Model):
             user.has_perm('delete_data', self)
         ])
     
+    def get_table_metadata(self, table_name):
+        """Get or create metadata for a table."""
+        # We need to import TableMetadata here or use string reference if it was defined later, 
+        # but since we are defining it in the same file, we can use self.table_metadata relation.
+        # However, TableMetadata is not defined yet when SqliteFile is defined.
+        # But the relation 'table_metadata' will be available on instances.
+        return self.table_metadata.get_or_create(table_name=table_name)[0]
+
     def _is_privileged_user(self, user):
         """Check if user is owner, superuser, or staff."""
         return user.is_superuser or user.is_staff or self.owner == user
@@ -373,6 +381,25 @@ class DatabasePermissionChecker:
             return False, "You already have a database with this name."
         
         return True, None
+
+
+class TableMetadata(models.Model):
+    """
+    Metadata for a table within a SQLite database.
+    Stores tags and description.
+    """
+    sqlite_file = models.ForeignKey(SqliteFile, on_delete=models.CASCADE, related_name='table_metadata')
+    table_name = models.CharField(max_length=255)
+    tags = models.JSONField(default=list, blank=True, help_text="List of tags for the table")
+    description = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        unique_together = ('sqlite_file', 'table_name')
+        verbose_name = 'Table Metadata'
+        verbose_name_plural = 'Table Metadata'
+        
+    def __str__(self):
+        return f"{self.table_name} ({self.sqlite_file.name})"
 
 
 class SQLiteManager:

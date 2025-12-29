@@ -180,14 +180,6 @@ class DatabaseDetailView(DatabaseReadPermissionMixin, TemplateView):
         
         # Get tables info
         tables = SQLiteManager.get_tables(db_name)
-        table_info = [
-            {
-                'name': table,
-                'columns': SQLiteManager.get_table_info(db_name, table),
-                'row_count': SQLiteManager.get_row_count(db_name, table)
-            }
-            for table in tables
-        ]
         
         # Use service for permission context
         perm_context = PermissionService.get_user_database_context(user, db_name)
@@ -196,9 +188,42 @@ class DatabaseDetailView(DatabaseReadPermissionMixin, TemplateView):
         sqlite_file = perm_context.get('sqlite_file')
         display_name = sqlite_file.name if sqlite_file else db_name
         
+        # Get table metadata
+        table_metadata_map = {}
+        if sqlite_file:
+            metadata_list = sqlite_file.table_metadata.all()
+            for meta in metadata_list:
+                table_metadata_map[meta.table_name] = meta
+
+        # Filter tables if search query is present
+        search_query = self.request.GET.get('q', '').strip().lower()
+        if search_query:
+            filtered_tables = []
+            for table in tables:
+                meta = table_metadata_map.get(table)
+                tags = [t.lower() for t in meta.tags] if meta and meta.tags else []
+                
+                # Check if query matches table name or any tag
+                if search_query in table.lower() or any(search_query in tag for tag in tags):
+                    filtered_tables.append(table)
+            tables = filtered_tables
+
         context['db_name'] = db_name
         context['display_name'] = display_name
+        
+        # Build table info with metadata
+        table_info = []
+        for table in tables:
+            info = {
+                'name': table,
+                'columns': SQLiteManager.get_table_info(db_name, table),
+                'row_count': SQLiteManager.get_row_count(db_name, table),
+                'metadata': table_metadata_map.get(table)
+            }
+            table_info.append(info)
+            
         context['tables'] = table_info
+        context['search_query'] = search_query
         context['column_types'] = COLUMN_TYPES
         context['column_constraints'] = COLUMN_CONSTRAINTS
         context.update(perm_context)
@@ -293,6 +318,11 @@ class TableDetailView(DatabaseReadPermissionMixin, TemplateView):
         sqlite_file = perm_context.get('sqlite_file')
         display_name = sqlite_file.name if sqlite_file else db_name
         
+        # Get table metadata
+        if sqlite_file:
+            metadata = sqlite_file.get_table_metadata(table_name)
+            context['table_metadata'] = metadata
+        
         context['db_name'] = db_name
         context['display_name'] = display_name
         context['table_name'] = table_name
@@ -302,6 +332,39 @@ class TableDetailView(DatabaseReadPermissionMixin, TemplateView):
         context.update(pagination)
         context.update(perm_context)
         return context
+
+
+class UpdateTableMetadataView(DatabaseWritePermissionMixin, View):
+    """Requires write permission to update table metadata."""
+    
+    def post(self, request, db_name, table_name):
+        # Get sqlite_file from permission check or query directly
+        # Since DatabaseWritePermissionMixin checks permissions, we can assume user has access
+        # But we need the SqliteFile object.
+        # The mixin doesn't automatically provide sqlite_file in self, but we can get it.
+        
+        sqlite_file = SqliteFile.get_by_filename(db_name)
+        if not sqlite_file:
+            # Try actual filename if db_name is not the internal filename
+            sqlite_file = SqliteFile.get_by_actual_filename(db_name)
+            
+        if not sqlite_file:
+            messages.error(request, "Database not found.")
+            return redirect('table_detail', db_name=db_name, table_name=table_name)
+            
+        tags_str = request.POST.get('tags', '')
+        description = request.POST.get('description', '')
+        
+        # Parse tags (comma separated)
+        tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+        
+        metadata = sqlite_file.get_table_metadata(table_name)
+        metadata.tags = tags
+        metadata.description = description
+        metadata.save()
+        
+        messages.success(request, "Table metadata updated successfully.")
+        return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
 class AddColumnView(DatabaseWritePermissionMixin, View):

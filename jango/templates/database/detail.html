@@ -84,6 +84,19 @@
 
 <!-- Tables Tab -->
 <div id="tables-tab" class="tab-content active">
+    <!-- Search Bar -->
+    <div class="mb-3">
+        <form method="get" action="" class="flex gap-1">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <input type="text" name="q" class="form-input" placeholder="Search tables by name or tag..." value="{{ search_query }}">
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+            {% if search_query %}
+                <a href="{% url 'database_detail' db_name %}" class="btn btn-ghost">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
     {% if tables %}
     <div class="grid grid-2">
         {% for table in tables %}
@@ -122,6 +135,13 @@
                     <span>{{ table.columns|length }} column{{ table.columns|length|pluralize }}</span>
                     <span>{{ table.row_count }} row{{ table.row_count|pluralize }}</span>
                 </div>
+                {% if table.metadata and table.metadata.tags %}
+                <div class="flex flex-wrap gap-1 mb-2">
+                    {% for tag in table.metadata.tags %}
+                        <span class="badge">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="column-list">
                     {% for col in table.columns %}
                     <span class="column-badge{% if col.5 %} pk{% endif %}">
