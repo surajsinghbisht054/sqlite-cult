@@ -181,158 +181,125 @@
     <!-- Main Content - Data -->
     <div class="content">
         <div class="card">
-            <!-- Table Toolbar -->
-            <div class="table-toolbar">
-                <div class="table-toolbar-group">
-                    <span class="table-toolbar-label">Columns:</span>
-                    <div class="column-visibility-dropdown">
-                        <button type="button" class="column-visibility-btn" onclick="toggleColumnMenu()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                            </svg>
-                            Show/Hide
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M6 9l6 6 6-6"/>
-                            </svg>
-                        </button>
-                        <div class="column-visibility-menu" id="column-visibility-menu">
-                            <div class="column-visibility-menu-header">
-                                <span class="column-visibility-menu-title">Manage Columns</span>
-                                <div class="column-visibility-menu-actions">
-                                    <button type="button" onclick="showAllColumns()">Show All</button>
-                                    <button type="button" onclick="hideAllColumns()">Hide All</button>
-                                </div>
-                            </div>
-                            <div id="column-list">
-                                <div class="column-visibility-item" data-col="0">
-                                    <span class="col-drag-handle" draggable="true">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <circle cx="9" cy="5" r="1"></circle>
-                                            <circle cx="9" cy="12" r="1"></circle>
-                                            <circle cx="9" cy="19" r="1"></circle>
-                                            <circle cx="15" cy="5" r="1"></circle>
-                                            <circle cx="15" cy="12" r="1"></circle>
-                                            <circle cx="15" cy="19" r="1"></circle>
-                                        </svg>
-                                    </span>
-                                    <input type="checkbox" id="col-toggle-0" checked onchange="toggleColumn(0)">
-                                    <label class="col-label" for="col-toggle-0">Row ID</label>
-                                </div>
-                                {% for col in column_names %}
-                                <div class="column-visibility-item" data-col="{{ forloop.counter }}">
-                                    <span class="col-drag-handle" draggable="true">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <circle cx="9" cy="5" r="1"></circle>
-                                            <circle cx="9" cy="12" r="1"></circle>
-                                            <circle cx="9" cy="19" r="1"></circle>
-                                            <circle cx="15" cy="5" r="1"></circle>
-                                            <circle cx="15" cy="12" r="1"></circle>
-                                            <circle cx="15" cy="19" r="1"></circle>
-                                        </svg>
-                                    </span>
-                                    <input type="checkbox" id="col-toggle-{{ forloop.counter }}" checked onchange="toggleColumn({{ forloop.counter }})">
-                                    <label class="col-label" for="col-toggle-{{ forloop.counter }}">{{ col }}</label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
+            <!-- Excel-like Spreadsheet Toolbar -->
+            <div class="spreadsheet-toolbar">
+                <div class="spreadsheet-toolbar-left">
+                    <div class="selection-info" id="selection-info">
+                        <span class="selection-badge">Select cells to edit</span>
                     </div>
                 </div>
-                <div class="table-toolbar-group">
-                    <button type="button" class="reset-columns-btn" onclick="resetColumns()">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                            <path d="M21 3v5h-5"></path>
-                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                            <path d="M3 21v-5h5"></path>
+                <div class="spreadsheet-toolbar-center">
+                    <button type="button" class="toolbar-btn" id="undo-btn" onclick="undoChanges()" disabled title="Undo (Ctrl+Z)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v6h6"></path>
+                            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6.36 2.64L3 13"></path>
                         </svg>
-                        Reset
+                    </button>
+                    <button type="button" class="toolbar-btn" id="redo-btn" onclick="redoChanges()" disabled title="Redo (Ctrl+Y)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 7v6h-6"></path>
+                            <path d="M3 17a9 9 0 019-9 9 9 0 016.36 2.64L21 13"></path>
+                        </svg>
+                    </button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="saveAllChanges()" id="save-all-btn" disabled title="Save all changes">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        <span>Save All</span>
+                    </button>
+                    <button type="button" class="toolbar-btn" onclick="discardAllChanges()" id="discard-all-btn" disabled title="Discard all changes">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="15" y1="9" x2="9" y2="15"></line>
+                            <line x1="9" y1="9" x2="15" y2="15"></line>
+                        </svg>
+                        <span>Discard</span>
                     </button>
                 </div>
-                <div class="table-toolbar-group" style="margin-left: auto;">
-                    <div class="table-scroll-hint">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M5 12h14"></path>
-                            <path d="M12 5l7 7-7 7"></path>
-                        </svg>
-                        Scroll horizontally • Drag column edges to resize
-                    </div>
+                <div class="spreadsheet-toolbar-right">
+                    <span class="modified-count" id="modified-count"></span>
                 </div>
             </div>
-            <div class="table-container" id="table-container">
-                <table class="data-table" id="data-table">
+            
+            <!-- Excel-like Spreadsheet Container -->
+            <div class="spreadsheet-container" id="spreadsheet-container">
+                <table class="spreadsheet" id="spreadsheet">
+                    <!-- Header Row -->
                     <thead>
-                        <tr>
-                            <th class="col-resizable" data-col="0" style="width: 80px;">
-                                <div class="th-content">
-                                    <span class="col-name">Row ID</span>
-                                    <div class="col-actions">
-                                        <button type="button" class="col-action-btn" onclick="hideColumn(0)" title="Hide column">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                                                <line x1="1" y1="1" x2="23" y2="23"></line>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
-                                </div>
+                        <tr class="spreadsheet-header">
+                            <th class="spreadsheet-cell header-cell corner-cell" data-col="-1">
+                                <input type="checkbox" id="select-all-rows" onchange="toggleSelectAllRows(this)" title="Select all rows">
+                            </th>
+                            <th class="spreadsheet-cell header-cell row-number-header" data-col="0">
+                                #
                             </th>
                             {% for col in column_names %}
-                            <th class="col-resizable" data-col="{{ forloop.counter }}" style="min-width: 100px;">
-                                <div class="th-content">
-                                    <span class="col-name">{{ col }}</span>
-                                    <div class="col-actions">
-                                        <button type="button" class="col-action-btn" onclick="hideColumn({{ forloop.counter }})" title="Hide column">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                                                <line x1="1" y1="1" x2="23" y2="23"></line>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    <div class="col-resize-handle" onmousedown="initResize(event, this)"></div>
+                            <th class="spreadsheet-cell header-cell" data-col="{{ forloop.counter }}" data-col-name="{{ col }}">
+                                <div class="header-content">
+                                    <span class="header-text">{{ col }}</span>
                                 </div>
+                                <div class="col-resize-handle" onmousedown="initColumnResize(event, {{ forloop.counter }})"></div>
                             </th>
                             {% endfor %}
-                            <th class="actions-cell" style="width: 100px;">Actions</th>
+                            <th class="spreadsheet-cell header-cell actions-header">
+                                Actions
+                            </th>
                         </tr>
                     </thead>
-                    <tbody>
+                    
+                    <!-- Data Rows -->
+                    <tbody class="spreadsheet-body" id="spreadsheet-body">
                         {% for row in rows %}
-                        <tr>
-                            <td data-col="0">{{ row.0 }}</td>
+                        <tr class="spreadsheet-row" data-rowid="{{ row.0 }}">
+                            <td class="spreadsheet-cell select-cell" data-col="-1">
+                                <input type="checkbox" class="row-checkbox" onchange="toggleRowSelection(this, {{ row.0 }})">
+                            </td>
+                            <td class="spreadsheet-cell row-number-cell" data-col="0">
+                                {{ row.0 }}
+                            </td>
                             {% for val in row|slice:"1:" %}
-                            <td data-col="{{ forloop.counter }}">
-                                {% if val is None %}
-                                <span class="null-value">NULL</span>
-                                {% else %}
-                                {{ val }}
-                                {% endif %}
+                            <td class="spreadsheet-cell data-cell" 
+                                 data-col="{{ forloop.counter }}" 
+                                 data-col-index="{{ forloop.counter0 }}"
+                                 data-original-value="{% if val is None %}{% else %}{{ val }}{% endif %}"
+                                 tabindex="0"
+                                 onclick="selectCell(this)"
+                                 ondblclick="editCell(this)">
+                                <div class="cell-content" contenteditable="false">{% if val is None %}<span class="null-value">NULL</span>{% else %}{{ val }}{% endif %}</div>
                             </td>
                             {% endfor %}
-                            <td class="actions-cell">
-                                <a href="{% url 'update_row' db_name table_name row.0 %}" 
-                                   class="btn-icon" title="Edit">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                    </svg>
-                                </a>
-                                <form method="post" action="{% url 'delete_row' db_name table_name row.0 %}"
-                                      style="display: inline;" onsubmit="return confirm('Delete this row?')">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn-icon" title="Delete">
+                            <td class="spreadsheet-cell actions-cell" data-col="actions">
+                                <div class="row-actions">
+                                    <button type="button" class="action-btn save-btn" onclick="saveRow({{ row.0 }})" title="Save changes" style="display: none;">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <polyline points="3 6 5 6 21 6"></polyline>
-                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                            <polyline points="20 6 9 17 4 12"></polyline>
                                         </svg>
                                     </button>
-                                </form>
+                                    <button type="button" class="action-btn reset-btn" onclick="resetRow({{ row.0 }})" title="Reset changes" style="display: none;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                            <path d="M3 3v5h5"></path>
+                                        </svg>
+                                    </button>
+                                    <form method="post" action="{% url 'delete_row' db_name table_name row.0 %}"
+                                          style="display: inline;" onsubmit="return confirm('Delete this row?')">
+                                        {% csrf_token %}
+                                        <button type="submit" class="action-btn delete-btn" title="Delete row">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                         {% empty %}
-                        <tr>
-                            <td colspan="{{ column_names|length|add:2 }}" class="text-center text-muted" style="padding: 2rem;">
+                        <tr class="spreadsheet-row empty-row">
+                            <td class="spreadsheet-cell" colspan="{{ column_names|length|add:3 }}">
                                 No data in this table
                             </td>
                         </tr>
@@ -852,317 +819,615 @@ function copyQueryResults() {
     });
 }
 
-// Column Management Variables
-const STORAGE_KEY = 'sqlitecult_table_{{ db_name }}_{{ table_name }}_columns';
-let columnState = loadColumnState();
-let resizeState = { isResizing: false, startX: 0, startWidth: 0, th: null };
+// ============================================
+// EXCEL-LIKE SPREADSHEET FUNCTIONALITY
+// ============================================
 
-// Load column state from localStorage
-function loadColumnState() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            return JSON.parse(saved);
-        }
-    } catch (e) {
-        console.warn('Failed to load column state:', e);
+// State management
+let modifiedRows = new Map(); // rowid -> { colName: newValue, ... }
+let selectedCells = new Set();
+let selectedRows = new Set();
+let currentCell = null;
+let isEditing = false;
+let columnWidths = {};
+
+// Column resize state
+let resizeState = {
+    isResizing: false,
+    startX: 0,
+    startWidth: 0,
+    colIndex: null
+};
+
+// ============================================
+// CELL SELECTION
+// ============================================
+
+function selectCell(cell) {
+    if (isEditing) return;
+    
+    // Clear previous selection unless shift is held
+    if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        clearSelection();
     }
-    return { hidden: [], widths: {}, order: [] };
+    
+    cell.classList.add('selected');
+    selectedCells.add(cell);
+    currentCell = cell;
+    
+    // Update selection info
+    updateSelectionInfo();
 }
 
-// Save column state to localStorage
-function saveColumnState() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(columnState));
-    } catch (e) {
-        console.warn('Failed to save column state:', e);
-    }
+function clearSelection() {
+    document.querySelectorAll('.spreadsheet-cell.selected').forEach(cell => {
+        cell.classList.remove('selected');
+    });
+    selectedCells.clear();
+    currentCell = null;
+    updateSelectionInfo();
 }
 
-// Toggle column visibility menu
-function toggleColumnMenu() {
-    const menu = document.getElementById('column-visibility-menu');
-    menu.classList.toggle('active');
-}
-
-// Close menu when clicking outside
-document.addEventListener('click', function(e) {
-    const dropdown = document.querySelector('.column-visibility-dropdown');
-    const menu = document.getElementById('column-visibility-menu');
-    if (dropdown && menu && !dropdown.contains(e.target)) {
-        menu.classList.remove('active');
-    }
-});
-
-// Toggle column visibility
-function toggleColumn(colIndex) {
-    const isHidden = columnState.hidden.includes(colIndex);
-    if (isHidden) {
-        columnState.hidden = columnState.hidden.filter(i => i !== colIndex);
+function updateSelectionInfo() {
+    const info = document.getElementById('selection-info');
+    if (selectedCells.size === 0) {
+        info.innerHTML = '<span class="selection-badge">Click cell to select, double-click to edit</span>';
+    } else if (selectedCells.size === 1) {
+        const cell = Array.from(selectedCells)[0];
+        const colIndex = cell.dataset.colIndex;
+        const colName = colIndex !== undefined ? columnNames[parseInt(colIndex)] : 'Row #';
+        const rowid = cell.closest('.spreadsheet-row')?.dataset.rowid || '';
+        info.innerHTML = `<span class="selection-badge">${colName} (Row ${rowid})</span>`;
     } else {
-        columnState.hidden.push(colIndex);
-    }
-    applyColumnVisibility();
-    saveColumnState();
-}
-
-// Hide a specific column
-function hideColumn(colIndex) {
-    if (!columnState.hidden.includes(colIndex)) {
-        columnState.hidden.push(colIndex);
-        document.getElementById(`col-toggle-${colIndex}`).checked = false;
-        applyColumnVisibility();
-        saveColumnState();
+        info.innerHTML = `<span class="selection-badge">${selectedCells.size} cells selected</span>`;
     }
 }
 
-// Show all columns
-function showAllColumns() {
-    columnState.hidden = [];
-    document.querySelectorAll('#column-list input[type="checkbox"]').forEach(cb => {
-        cb.checked = true;
-    });
-    applyColumnVisibility();
-    saveColumnState();
-}
+// ============================================
+// CELL EDITING
+// ============================================
 
-// Hide all columns except Row ID and Actions
-function hideAllColumns() {
-    const totalCols = document.querySelectorAll('.data-table thead th[data-col]').length;
-    columnState.hidden = [];
-    for (let i = 1; i < totalCols; i++) {
-        columnState.hidden.push(i);
-    }
-    document.querySelectorAll('#column-list input[type="checkbox"]').forEach((cb, index) => {
-        cb.checked = index === 0;
-    });
-    applyColumnVisibility();
-    saveColumnState();
-}
-
-// Apply column visibility to table
-function applyColumnVisibility() {
-    const table = document.getElementById('data-table');
-    const headers = table.querySelectorAll('thead th[data-col]');
-    const rows = table.querySelectorAll('tbody tr');
+function editCell(cell) {
+    if (!cell.classList.contains('data-cell')) return;
+    if (isEditing) return;
     
-    headers.forEach(th => {
-        const colIndex = parseInt(th.dataset.col);
-        th.classList.toggle('col-hidden', columnState.hidden.includes(colIndex));
-    });
+    isEditing = true;
+    cell.classList.add('editing');
     
-    rows.forEach(row => {
-        const cells = row.querySelectorAll('td[data-col]');
-        cells.forEach(td => {
-            const colIndex = parseInt(td.dataset.col);
-            td.classList.toggle('col-hidden', columnState.hidden.includes(colIndex));
+    const content = cell.querySelector('.cell-content');
+    const originalValue = cell.dataset.originalValue;
+    const isNull = content.querySelector('.null-value') !== null;
+    
+    content.contentEditable = 'true';
+    content.textContent = isNull ? '' : (content.textContent || '');
+    content.focus();
+    
+    // Select all text
+    const range = document.createRange();
+    range.selectNodeContents(content);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    
+    // Handle blur and keydown
+    const handleBlur = () => {
+        finishEditing(cell);
+    };
+    
+    const handleKeydown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            finishEditing(cell);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelEditing(cell);
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            finishEditing(cell);
+            navigateToNextCell(cell, e.shiftKey ? -1 : 1);
+        }
+    };
+    
+    content.addEventListener('blur', handleBlur, { once: true });
+    content.addEventListener('keydown', handleKeydown);
+    
+    // Store handlers for cleanup
+    cell._editHandlers = { blur: handleBlur, keydown: handleKeydown };
+}
+
+function finishEditing(cell) {
+    if (!isEditing) return;
+    
+    const content = cell.querySelector('.cell-content');
+    const newValue = content.textContent.trim();
+    const originalValue = cell.dataset.originalValue;
+    
+    content.contentEditable = 'false';
+    cell.classList.remove('editing');
+    isEditing = false;
+    
+    // Check if value changed
+    const isChanged = newValue !== originalValue;
+    
+    if (isChanged) {
+        markCellAsModified(cell, newValue);
+    } else {
+        // Restore original display
+        if (originalValue === '') {
+            content.innerHTML = '<span class="null-value">NULL</span>';
+        }
+        cell.classList.remove('modified');
+        removeModification(cell);
+    }
+    
+    // Show/hide empty placeholder
+    if (newValue === '') {
+        content.innerHTML = '<span class="null-value">NULL</span>';
+    }
+    
+    updateToolbarState();
+}
+
+function cancelEditing(cell) {
+    if (!isEditing) return;
+    
+    const content = cell.querySelector('.cell-content');
+    const originalValue = cell.dataset.originalValue;
+    
+    content.contentEditable = 'false';
+    cell.classList.remove('editing');
+    isEditing = false;
+    
+    // Restore original value
+    if (originalValue === '' || originalValue === undefined) {
+        content.innerHTML = '<span class="null-value">NULL</span>';
+    } else {
+        content.textContent = originalValue;
+    }
+}
+
+function navigateToNextCell(currentCell, direction) {
+    const row = currentCell.closest('.spreadsheet-row');
+    const cells = Array.from(row.querySelectorAll('.data-cell'));
+    const currentIndex = cells.indexOf(currentCell);
+    const nextIndex = currentIndex + direction;
+    
+    if (nextIndex >= 0 && nextIndex < cells.length) {
+        selectCell(cells[nextIndex]);
+        editCell(cells[nextIndex]);
+    }
+}
+
+// Helper function to get column name from cell
+function getColumnName(cell) {
+    const colIndex = parseInt(cell.dataset.colIndex);
+    return columnNames[colIndex];
+}
+
+// ============================================
+// MODIFICATION TRACKING
+// ============================================
+
+function markCellAsModified(cell, newValue) {
+    const row = cell.closest('.spreadsheet-row');
+    const rowid = parseInt(row.dataset.rowid);
+    const colName = getColumnName(cell);
+    
+    cell.classList.add('modified');
+    
+    // Track modification
+    if (!modifiedRows.has(rowid)) {
+        modifiedRows.set(rowid, {});
+    }
+    modifiedRows.get(rowid)[colName] = newValue;
+    
+    // Show row action buttons
+    showRowActions(row);
+    updateToolbarState();
+}
+
+function removeModification(cell) {
+    const row = cell.closest('.spreadsheet-row');
+    const rowid = parseInt(row.dataset.rowid);
+    const colName = getColumnName(cell);
+    
+    if (modifiedRows.has(rowid)) {
+        delete modifiedRows.get(rowid)[colName];
+        if (Object.keys(modifiedRows.get(rowid)).length === 0) {
+            modifiedRows.delete(rowid);
+            hideRowActions(row);
+        }
+    }
+    
+    updateToolbarState();
+}
+
+function showRowActions(row) {
+    const saveBtn = row.querySelector('.save-btn');
+    const resetBtn = row.querySelector('.reset-btn');
+    if (saveBtn) saveBtn.style.display = 'inline-flex';
+    if (resetBtn) resetBtn.style.display = 'inline-flex';
+    row.classList.add('row-modified');
+}
+
+function hideRowActions(row) {
+    const saveBtn = row.querySelector('.save-btn');
+    const resetBtn = row.querySelector('.reset-btn');
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (resetBtn) resetBtn.style.display = 'none';
+    row.classList.remove('row-modified');
+}
+
+function updateToolbarState() {
+    const saveAllBtn = document.getElementById('save-all-btn');
+    const discardAllBtn = document.getElementById('discard-all-btn');
+    const modifiedCount = document.getElementById('modified-count');
+    
+    const hasModifications = modifiedRows.size > 0;
+    
+    saveAllBtn.disabled = !hasModifications;
+    discardAllBtn.disabled = !hasModifications;
+    
+    if (hasModifications) {
+        const totalChanges = Array.from(modifiedRows.values())
+            .reduce((sum, row) => sum + Object.keys(row).length, 0);
+        modifiedCount.textContent = `${modifiedRows.size} row${modifiedRows.size > 1 ? 's' : ''} modified (${totalChanges} change${totalChanges > 1 ? 's' : ''})`;
+        modifiedCount.classList.add('has-changes');
+    } else {
+        modifiedCount.textContent = '';
+        modifiedCount.classList.remove('has-changes');
+    }
+}
+
+// ============================================
+// SAVE & RESET OPERATIONS
+// ============================================
+
+async function saveRow(rowid) {
+    if (!modifiedRows.has(rowid)) return;
+    
+    const row = document.querySelector(`.spreadsheet-row[data-rowid="${rowid}"]`);
+    const data = modifiedRows.get(rowid);
+    
+    row.classList.add('saving');
+    
+    try {
+        const response = await fetch(`/database/${dbName}/table/${tableName}/inline-update/${rowid}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify(data)
         });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Update original values and remove modified state
+            Object.entries(data).forEach(([colName, value]) => {
+                // Find cell by column index
+                const colIndex = columnNames.indexOf(colName);
+                const cell = row.querySelector(`.data-cell[data-col-index="${colIndex}"]`);
+                if (cell) {
+                    cell.dataset.originalValue = value;
+                    cell.classList.remove('modified');
+                    cell.classList.add('saved');
+                    setTimeout(() => cell.classList.remove('saved'), 1000);
+                }
+            });
+            
+            modifiedRows.delete(rowid);
+            hideRowActions(row);
+            updateToolbarState();
+            showToast('Row saved successfully', 'success');
+        } else {
+            showToast(`Error: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Error saving row: ${error.message}`, 'error');
+    } finally {
+        row.classList.remove('saving');
+    }
+}
+
+function resetRow(rowid) {
+    const row = document.querySelector(`.spreadsheet-row[data-rowid="${rowid}"]`);
+    
+    // Reset all modified cells in this row
+    row.querySelectorAll('.data-cell.modified').forEach(cell => {
+        const content = cell.querySelector('.cell-content');
+        const originalValue = cell.dataset.originalValue;
+        
+        if (originalValue === '' || originalValue === undefined) {
+            content.innerHTML = '<span class="null-value">NULL</span>';
+        } else {
+            content.textContent = originalValue;
+        }
+        cell.classList.remove('modified');
+    });
+    
+    modifiedRows.delete(rowid);
+    hideRowActions(row);
+    updateToolbarState();
+}
+
+async function saveAllChanges() {
+    const rowids = Array.from(modifiedRows.keys());
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const rowid of rowids) {
+        try {
+            await saveRow(rowid);
+            successCount++;
+        } catch (e) {
+            errorCount++;
+        }
+    }
+    
+    if (errorCount === 0) {
+        showToast(`All ${successCount} rows saved successfully`, 'success');
+    } else {
+        showToast(`Saved ${successCount} rows, ${errorCount} failed`, 'warning');
+    }
+}
+
+function discardAllChanges() {
+    if (!confirm('Discard all unsaved changes?')) return;
+    
+    const rowids = Array.from(modifiedRows.keys());
+    rowids.forEach(rowid => resetRow(rowid));
+    showToast('All changes discarded', 'info');
+}
+
+// ============================================
+// ROW SELECTION
+// ============================================
+
+function toggleSelectAllRows(checkbox) {
+    const isChecked = checkbox.checked;
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.checked = isChecked;
+        const row = cb.closest('.spreadsheet-row');
+        if (isChecked) {
+            row.classList.add('row-selected');
+            selectedRows.add(parseInt(row.dataset.rowid));
+        } else {
+            row.classList.remove('row-selected');
+            selectedRows.delete(parseInt(row.dataset.rowid));
+        }
     });
 }
 
-// Reset columns to default
-function resetColumns() {
-    columnState = { hidden: [], widths: {}, order: [] };
-    localStorage.removeItem(STORAGE_KEY);
+function toggleRowSelection(checkbox, rowid) {
+    const row = checkbox.closest('.spreadsheet-row');
+    if (checkbox.checked) {
+        row.classList.add('row-selected');
+        selectedRows.add(rowid);
+    } else {
+        row.classList.remove('row-selected');
+        selectedRows.delete(rowid);
+    }
     
-    // Reset checkboxes
-    document.querySelectorAll('#column-list input[type="checkbox"]').forEach(cb => {
-        cb.checked = true;
-    });
-    
-    // Reset column widths
-    document.querySelectorAll('.data-table thead th[data-col]').forEach(th => {
-        th.style.width = '';
-    });
-    
-    applyColumnVisibility();
-    showToast('Columns reset to default');
+    // Update select all checkbox state
+    const allCheckboxes = document.querySelectorAll('.row-checkbox');
+    const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+    const selectAllCheckbox = document.getElementById('select-all-rows');
+    selectAllCheckbox.checked = checkedCount === allCheckboxes.length;
+    selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
 }
 
-// Column Resize Functions
-function initResize(e, handle) {
+// ============================================
+// COLUMN RESIZING
+// ============================================
+
+function initColumnResize(e, colIndex) {
     e.preventDefault();
     e.stopPropagation();
-    // Get the th element (parent of .th-content which is parent of handle)
-    const th = handle.closest('th');
-    if (!th) return;
+    
+    const headerCell = document.querySelector(`.header-cell[data-col="${colIndex}"]`);
+    if (!headerCell) return;
     
     resizeState = {
         isResizing: true,
         startX: e.pageX,
-        startWidth: th.offsetWidth,
-        th: th
+        startWidth: headerCell.offsetWidth,
+        colIndex: colIndex
     };
-    handle.classList.add('resizing');
+    
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', doResize);
-    document.addEventListener('mouseup', stopResize);
+    
+    document.addEventListener('mousemove', doColumnResize);
+    document.addEventListener('mouseup', stopColumnResize);
 }
 
-function doResize(e) {
+function doColumnResize(e) {
     if (!resizeState.isResizing) return;
-    e.preventDefault();
-    const width = Math.max(50, resizeState.startWidth + (e.pageX - resizeState.startX));
-    resizeState.th.style.width = width + 'px';
-    resizeState.th.style.minWidth = width + 'px';
     
-    // Save width to state
-    const colIndex = resizeState.th.dataset.col;
-    if (colIndex !== undefined) {
-        columnState.widths[colIndex] = width;
-    }
-}
-
-function stopResize() {
-    if (resizeState.isResizing) {
-        resizeState.isResizing = false;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        const handle = resizeState.th.querySelector('.col-resize-handle');
-        if (handle) handle.classList.remove('resizing');
-        saveColumnState();
-    }
-    document.removeEventListener('mousemove', doResize);
-    document.removeEventListener('mouseup', stopResize);
-}
-
-// Column Reordering via Drag and Drop in Menu
-function initColumnDragDrop() {
-    const columnList = document.getElementById('column-list');
-    let draggedItem = null;
+    const newWidth = Math.max(80, resizeState.startWidth + (e.pageX - resizeState.startX));
     
-    columnList.addEventListener('dragstart', function(e) {
-        const handle = e.target.closest('.col-drag-handle');
-        if (!handle) {
-            e.preventDefault();
-            return;
-        }
-        draggedItem = handle.closest('.column-visibility-item');
-        draggedItem.classList.add('sortable-drag');
-        e.dataTransfer.effectAllowed = 'move';
+    // Update header width
+    const headerCell = document.querySelector(`.header-cell[data-col="${resizeState.colIndex}"]`);
+    if (headerCell) {
+        headerCell.style.width = newWidth + 'px';
+        headerCell.style.minWidth = newWidth + 'px';
+        headerCell.style.maxWidth = newWidth + 'px';
+    }
+    
+    // Update all cells in this column
+    document.querySelectorAll(`.spreadsheet-cell[data-col="${resizeState.colIndex}"]`).forEach(cell => {
+        cell.style.width = newWidth + 'px';
+        cell.style.minWidth = newWidth + 'px';
+        cell.style.maxWidth = newWidth + 'px';
     });
     
-    columnList.addEventListener('dragend', function(e) {
-        if (draggedItem) {
-            draggedItem.classList.remove('sortable-drag');
-            draggedItem = null;
-        }
-        document.querySelectorAll('.column-visibility-item').forEach(item => {
-            item.classList.remove('drag-over');
-        });
-    });
+    columnWidths[resizeState.colIndex] = newWidth;
+}
+
+function stopColumnResize() {
+    resizeState.isResizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', doColumnResize);
+    document.removeEventListener('mouseup', stopColumnResize);
     
-    columnList.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        const target = e.target.closest('.column-visibility-item');
-        if (target && target !== draggedItem) {
-            const bounding = target.getBoundingClientRect();
-            const offset = e.clientY - bounding.top;
-            
-            document.querySelectorAll('.column-visibility-item').forEach(item => {
-                item.classList.remove('drag-over');
+    // Save column widths to localStorage
+    localStorage.setItem(`spreadsheet_widths_${dbName}_${tableName}`, JSON.stringify(columnWidths));
+}
+
+function loadColumnWidths() {
+    try {
+        const saved = localStorage.getItem(`spreadsheet_widths_${dbName}_${tableName}`);
+        if (saved) {
+            columnWidths = JSON.parse(saved);
+            Object.entries(columnWidths).forEach(([colIndex, width]) => {
+                document.querySelectorAll(`.spreadsheet-cell[data-col="${colIndex}"]`).forEach(cell => {
+                    cell.style.width = width + 'px';
+                    cell.style.minWidth = width + 'px';
+                    cell.style.maxWidth = width + 'px';
+                });
             });
-            
-            if (offset > bounding.height / 2) {
-                target.classList.add('drag-over');
-            }
         }
-    });
-    
-    columnList.addEventListener('drop', function(e) {
-        e.preventDefault();
-        const target = e.target.closest('.column-visibility-item');
-        if (target && draggedItem && target !== draggedItem) {
-            const bounding = target.getBoundingClientRect();
-            const offset = e.clientY - bounding.top;
-            
-            if (offset > bounding.height / 2) {
-                target.after(draggedItem);
-            } else {
-                target.before(draggedItem);
-            }
-            
-            // Update column order in state
-            updateColumnOrder();
-            applyColumnOrder();
-            saveColumnState();
-        }
-    });
-}
-
-function updateColumnOrder() {
-    const items = document.querySelectorAll('#column-list .column-visibility-item');
-    columnState.order = Array.from(items).map(item => parseInt(item.dataset.col));
-}
-
-function applyColumnOrder() {
-    if (columnState.order.length === 0) return;
-    
-    const table = document.getElementById('data-table');
-    const thead = table.querySelector('thead tr');
-    const tbody = table.querySelector('tbody');
-    const rows = tbody.querySelectorAll('tr');
-    
-    // Get all column headers (excluding actions)
-    const headers = Array.from(thead.querySelectorAll('th[data-col]'));
-    const actionsHeader = thead.querySelector('th.actions-cell:not([data-col])');
-    
-    // Reorder headers based on columnState.order
-    columnState.order.forEach(colIndex => {
-        const header = headers.find(h => parseInt(h.dataset.col) === colIndex);
-        if (header) {
-            thead.insertBefore(header, actionsHeader);
-        }
-    });
-    
-    // Reorder cells in each row
-    rows.forEach(row => {
-        const cells = Array.from(row.querySelectorAll('td[data-col]'));
-        const actionsCell = row.querySelector('td.actions-cell:not([data-col])');
-        
-        columnState.order.forEach(colIndex => {
-            const cell = cells.find(c => parseInt(c.dataset.col) === colIndex);
-            if (cell) {
-                row.insertBefore(cell, actionsCell);
-            }
-        });
-    });
-}
-
-// Apply saved column widths
-function applyColumnWidths() {
-    Object.entries(columnState.widths).forEach(([colIndex, width]) => {
-        const th = document.querySelector(`.data-table thead th[data-col="${colIndex}"]`);
-        if (th) {
-            th.style.width = width + 'px';
-        }
-    });
-}
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    applyColumnVisibility();
-    applyColumnWidths();
-    applyColumnOrder();
-    initColumnDragDrop();
-    
-    // Update checkboxes based on saved state
-    columnState.hidden.forEach(colIndex => {
-        const checkbox = document.getElementById(`col-toggle-${colIndex}`);
-        if (checkbox) checkbox.checked = false;
-    });
-    
-    // Reorder menu items based on saved order
-    if (columnState.order.length > 0) {
-        const columnList = document.getElementById('column-list');
-        columnState.order.forEach(colIndex => {
-            const item = columnList.querySelector(`[data-col="${colIndex}"]`);
-            if (item) {
-                columnList.appendChild(item);
-            }
-        });
+    } catch (e) {
+        console.warn('Failed to load column widths:', e);
     }
+}
+
+function initializeColumnWidths() {
+    // Set initial widths based on header cell computed widths
+    const headerCells = document.querySelectorAll('.header-cell[data-col]');
+    headerCells.forEach(headerCell => {
+        const colIndex = headerCell.getAttribute('data-col');
+        // Skip special columns
+        if (colIndex === '-1' || colIndex === '0' || colIndex === 'actions') return;
+        
+        // Only set if not already in columnWidths (from localStorage)
+        if (!columnWidths[colIndex]) {
+            const width = Math.max(120, headerCell.offsetWidth);
+            columnWidths[colIndex] = width;
+            
+            // Apply to all cells in this column
+            document.querySelectorAll(`.spreadsheet-cell[data-col="${colIndex}"]`).forEach(cell => {
+                cell.style.width = width + 'px';
+                cell.style.minWidth = width + 'px';
+                cell.style.maxWidth = width + 'px';
+            });
+        }
+    });
+}
+
+// ============================================
+// KEYBOARD NAVIGATION
+// ============================================
+
+function handleKeyboardNavigation(e) {
+    if (isEditing) return;
+    if (!currentCell) return;
+    
+    const row = currentCell.closest('.spreadsheet-row');
+    const cells = Array.from(row.querySelectorAll('.data-cell'));
+    const currentIndex = cells.indexOf(currentCell);
+    const rows = Array.from(document.querySelectorAll('.spreadsheet-row:not(.empty-row)'));
+    const currentRowIndex = rows.indexOf(row);
+    
+    let nextCell = null;
+    
+    switch(e.key) {
+        case 'ArrowRight':
+            if (currentIndex < cells.length - 1) {
+                nextCell = cells[currentIndex + 1];
+            }
+            break;
+        case 'ArrowLeft':
+            if (currentIndex > 0) {
+                nextCell = cells[currentIndex - 1];
+            }
+            break;
+        case 'ArrowDown':
+            if (currentRowIndex < rows.length - 1) {
+                const nextRow = rows[currentRowIndex + 1];
+                nextCell = nextRow.querySelectorAll('.data-cell')[currentIndex];
+            }
+            break;
+        case 'ArrowUp':
+            if (currentRowIndex > 0) {
+                const prevRow = rows[currentRowIndex - 1];
+                nextCell = prevRow.querySelectorAll('.data-cell')[currentIndex];
+            }
+            break;
+        case 'Enter':
+            e.preventDefault();
+            editCell(currentCell);
+            return;
+        case 'Delete':
+        case 'Backspace':
+            if (!isEditing) {
+                e.preventDefault();
+                editCell(currentCell);
+                setTimeout(() => {
+                    const content = currentCell.querySelector('.cell-content');
+                    content.textContent = '';
+                }, 0);
+            }
+            return;
+    }
+    
+    if (nextCell) {
+        e.preventDefault();
+        clearSelection();
+        selectCell(nextCell);
+        nextCell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+}
+
+// ============================================
+// UNDO/REDO (Basic implementation)
+// ============================================
+
+let undoStack = [];
+let redoStack = [];
+
+function undoChanges() {
+    // TODO: Implement undo
+    showToast('Undo not yet implemented', 'info');
+}
+
+function redoChanges() {
+    // TODO: Implement redo
+    showToast('Redo not yet implemented', 'info');
+}
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Load saved column widths
+    loadColumnWidths();
+    
+    // Initialize column widths after a short delay to ensure layout is complete
+    setTimeout(initializeColumnWidths, 50);
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', handleKeyboardNavigation);
+    
+    // Click outside to deselect
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.spreadsheet-cell') && !e.target.closest('.spreadsheet-toolbar')) {
+            clearSelection();
+        }
+    });
+    
+    // Warn before leaving with unsaved changes
+    window.addEventListener('beforeunload', function(e) {
+        if (modifiedRows.size > 0) {
+            e.preventDefault();
+            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+            return e.returnValue;
+        }
+    });
     
     // Add keyboard shortcut for query execution (Ctrl+Enter)
     const queryInput = document.getElementById('query-input');
@@ -1174,6 +1439,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    
+    // Ctrl+S to save all changes
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (modifiedRows.size > 0) {
+                saveAllChanges();
+            }
+        }
+    });
 });
 </script>
 {% endblock %}

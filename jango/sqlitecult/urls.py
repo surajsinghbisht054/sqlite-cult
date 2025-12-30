@@ -49,6 +49,7 @@ urlpatterns = [
     # Row operations
     path('database/<str:db_name>/table/<str:table_name>/insert/', views.InsertRowView.as_view(), name='insert_row'),
     path('database/<str:db_name>/table/<str:table_name>/update/<int:rowid>/', views.UpdateRowView.as_view(), name='update_row'),
+    path('database/<str:db_name>/table/<str:table_name>/inline-update/<int:rowid>/', views.InlineUpdateRowView.as_view(), name='inline_update_row'),
     path('database/<str:db_name>/table/<str:table_name>/delete/<int:rowid>/', views.DeleteRowView.as_view(), name='delete_row'),
     
     # Export/Import

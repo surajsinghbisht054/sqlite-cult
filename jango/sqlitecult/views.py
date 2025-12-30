@@ -614,6 +614,38 @@ class DeleteRowView(DatabaseWritePermissionMixin, View):
         return redirect('table_detail', db_name=db_name, table_name=table_name)
 
 
+class InlineUpdateRowView(DatabaseWritePermissionMixin, View):
+    """AJAX endpoint for inline row updates from the spreadsheet UI."""
+    def post(self, request, db_name, table_name, rowid):
+        import json
+        try:
+            data = json.loads(request.body)
+            columns = SQLiteManager.get_table_info(db_name, table_name)
+            column_names = [col[1] for col in columns]
+            
+            # Extract values from the data, maintaining column order
+            update_columns = []
+            values = []
+            for col_name in column_names:
+                if col_name in data:
+                    update_columns.append(col_name)
+                    val = data[col_name]
+                    # Convert empty string to None for NULL
+                    values.append(val if val != '' else None)
+            
+            if not update_columns:
+                return JsonResponse({'success': False, 'error': 'No valid columns provided'}, status=400)
+            
+            sql = SQLiteManager.update_row(db_name, table_name, update_columns, values, rowid)
+            QueryHistory.log_query(request.user, db_name, f'{sql} with values {values}')
+            
+            return JsonResponse({'success': True, 'message': 'Row updated successfully'})
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 # Export Views
 class ExportTableView(DatabaseReadPermissionMixin, View):
     """Requires read permission to export table data."""
