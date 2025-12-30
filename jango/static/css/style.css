@@ -6,30 +6,30 @@
     --color-surface-3: #e2e8f0;
     --color-border: #e2e8f0;
     --color-border-dark: #cbd5e1;
-    --color-text: #1e293b;
+    --color-text: #0f172a;
     --color-text-muted: #64748b;
     --color-text-light: #94a3b8;
-    --color-primary: #2563eb;
-    --color-primary-hover: #1d4ed8;
-    --color-primary-light: #dbeafe;
-    --color-success: #16a34a;
+    --color-primary: #3b82f6;
+    --color-primary-hover: #2563eb;
+    --color-primary-light: #eff6ff;
+    --color-success: #22c55e;
     --color-success-light: #dcfce7;
-    --color-warning: #d97706;
+    --color-warning: #f59e0b;
     --color-warning-light: #fef3c7;
-    --color-danger: #dc2626;
-    --color-danger-hover: #b91c1c;
+    --color-danger: #ef4444;
+    --color-danger-hover: #dc2626;
     --color-danger-light: #fee2e2;
-    --color-info: #0891b2;
+    --color-info: #06b6d4;
     --color-info-light: #cffafe;
-    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --font-mono: 'SF Mono', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
-    --border-radius: 8px;
+    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+    --border-radius: 6px;
     --border-radius-sm: 4px;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    --transition: all 0.15s ease;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Reset */
@@ -194,10 +194,15 @@ a:hover {
     border: none;
     border-radius: var(--border-radius);
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.01em;
     cursor: pointer;
     transition: var(--transition);
     text-decoration: none;
+}
+
+.btn:active {
+    transform: translateY(1px);
 }
 
 .btn-primary {
@@ -291,7 +296,7 @@ a:hover {
 .form-input:focus {
     outline: none;
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-light);
+    box-shadow: 0 0 0 4px var(--color-primary-light);
 }
 
 .form-input::placeholder {
@@ -2021,22 +2026,21 @@ select.form-input {
 }
 
 .spreadsheet-container::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
 }
 
 .spreadsheet-container::-webkit-scrollbar-track {
-    background: var(--color-surface-2);
+    background: transparent;
 }
 
 .spreadsheet-container::-webkit-scrollbar-thumb {
     background: var(--color-border-dark);
-    border-radius: 5px;
-    border: 2px solid var(--color-surface-2);
+    border-radius: 4px;
 }
 
 .spreadsheet-container::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-light);
+    background: var(--color-text-muted);
 }
 
 .spreadsheet-container::-webkit-scrollbar-corner {
@@ -2075,7 +2079,7 @@ select.form-input {
 
 .spreadsheet-row:hover .select-cell,
 .spreadsheet-row:hover .row-number-cell {
-    background: var(--color-surface-3);
+    background: var(--color-surface-2);
 }
 
 .spreadsheet-row.row-selected .spreadsheet-cell {
@@ -2109,16 +2113,22 @@ select.form-input {
 
 /* Header Cells */
 .header-cell {
-    background: var(--color-surface-2);
+    background: var(--color-surface);
     font-weight: 600;
     color: var(--color-text-muted);
-    font-size: 0.75rem;
-    text-transform: none;
-    border: 1px solid var(--color-border-dark);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--color-border);
     border-bottom: 2px solid var(--color-border-dark);
-    height: 36px;
+    height: 40px;
     user-select: none;
     min-width: 120px;
+    transition: background-color 0.2s;
+}
+
+.header-cell:hover {
+    background: var(--color-surface-2);
 }
 
 .header-cell .header-content {
@@ -2159,8 +2169,9 @@ select.form-input {
     min-width: 36px;
     max-width: 36px;
     text-align: center;
-    background: var(--color-surface-3);
-    border-right: 2px solid var(--color-border-dark);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-bottom: 2px solid var(--color-border-dark);
     position: sticky;
     left: 0;
     z-index: 30;
@@ -2169,6 +2180,8 @@ select.form-input {
 .corner-cell input[type="checkbox"] {
     cursor: pointer;
     accent-color: var(--color-primary);
+    width: 14px;
+    height: 14px;
 }
 
 .select-cell {
@@ -2176,8 +2189,8 @@ select.form-input {
     min-width: 36px;
     max-width: 36px;
     text-align: center;
-    background: var(--color-surface-2);
-    border-right: 2px solid var(--color-border-dark);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     position: sticky;
     left: 0;
     z-index: 15;
@@ -2186,6 +2199,8 @@ select.form-input {
 .select-cell input[type="checkbox"] {
     cursor: pointer;
     accent-color: var(--color-primary);
+    width: 14px;
+    height: 14px;
 }
 
 .row-number-header,
@@ -2194,21 +2209,23 @@ select.form-input {
     min-width: 50px;
     max-width: 50px;
     text-align: center;
-    background: var(--color-surface-2);
+    background: var(--color-surface);
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 500;
     position: sticky;
     left: 36px;
     z-index: 15;
-    border-right: 2px solid var(--color-border-dark);
+    border: 1px solid var(--color-border);
     padding: 0.5rem 0.25rem;
+    box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.1);
 }
 
 .row-number-header {
     z-index: 30;
-    background: var(--color-surface-3);
+    background: var(--color-surface);
+    border-bottom: 2px solid var(--color-border-dark);
 }
 
 .actions-header,
@@ -2220,20 +2237,25 @@ select.form-input {
     position: sticky;
     right: 0;
     z-index: 15;
-    border-left: 2px solid var(--color-border-dark);
+    border: 1px solid var(--color-border);
+    border-left: 1px solid var(--color-border);
     background: var(--color-surface);
+    box-shadow: -2px 0 5px -2px rgba(0, 0, 0, 0.1);
 }
 
 .actions-header {
     z-index: 30;
-    background: var(--color-surface-3);
+    background: var(--color-surface);
     font-weight: 600;
     color: var(--color-text-muted);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--color-border-dark);
 }
 
 .spreadsheet-row:hover .actions-cell {
-    background: var(--color-primary-light);
+    background: var(--color-surface); /* Keep it white or maybe slightly different */
 }
 
 .spreadsheet-row.row-modified .actions-cell {
@@ -2247,6 +2269,7 @@ select.form-input {
     transition: background-color 0.1s, box-shadow 0.1s;
     min-width: 120px;
     overflow: hidden;
+    border: 1px solid var(--color-border);
 }
 
 .data-cell:hover {
@@ -2254,8 +2277,8 @@ select.form-input {
 }
 
 .data-cell.selected {
-    background: var(--color-info-light);
-    box-shadow: inset 0 0 0 2px var(--color-info);
+    background: var(--color-primary-light);
+    box-shadow: inset 0 0 0 2px var(--color-primary);
     z-index: 5;
 }
 
