@@ -1,3 +1,5 @@
+import json
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.views import View
@@ -1065,7 +1067,7 @@ class CreateChartView(LoginRequiredMixin, View):
                 database_name=database_name,
                 query=query,
                 chart_type=chart_type,
-                auto_refresh=auto_refresh
+                auto_refresh=auto_refresh,
             )
             messages.success(request, f'Chart "{title}" created successfully.')
             return redirect('dashboard_detail', dashboard_id=dashboard.id)
@@ -1178,6 +1180,36 @@ class ChartDataView(LoginRequiredMixin, View):
                 'data': result['data']
             })
         return JsonResponse({'error': result['error']}, status=400)
+
+
+class UpdateChartSizeView(LoginRequiredMixin, View):
+    """Persist chart size updates from dashboard drag resizing."""
+
+    def post(self, request, chart_id):
+        chart = DashboardChart.objects.filter(id=chart_id, user=request.user).first()
+        if not chart:
+            return JsonResponse({'error': 'Chart not found.'}, status=404)
+
+        try:
+            payload = json.loads(request.body or '{}')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid request payload.'}, status=400)
+
+        try:
+            chart_width = max(320, int(payload.get('width', chart.chart_width)))
+            chart_height = max(260, int(payload.get('height', chart.chart_height)))
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'Width and height must be valid numbers.'}, status=400)
+
+        chart.chart_width = chart_width
+        chart.chart_height = chart_height
+        chart.save(update_fields=['chart_width', 'chart_height', 'updated_at'])
+
+        return JsonResponse({
+            'success': True,
+            'chart_width': chart.chart_width,
+            'chart_height': chart.chart_height,
+        })
 
 
 class DatabaseSchemaAPIView(DatabaseReadPermissionMixin, View):

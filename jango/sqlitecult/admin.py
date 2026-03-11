@@ -56,7 +56,7 @@ class DashboardAdmin(admin.ModelAdmin):
 
 @admin.register(DashboardChart)
 class DashboardChartAdmin(admin.ModelAdmin):
-    list_display = ['title', 'user', 'dashboard', 'chart_type', 'database_name', 'created_at']
+    list_display = ['title', 'user', 'dashboard', 'chart_type', 'chart_width', 'chart_height', 'database_name', 'created_at']
     list_filter = ['chart_type', 'database_name', 'dashboard', 'created_at']
     search_fields = ['title', 'user__username', 'query']
     ordering = ['-created_at']

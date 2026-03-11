@@ -1017,6 +1017,8 @@ class DashboardChart(models.Model):
     from .constants import CHART_TYPES as _CHART_TYPES, REFRESH_INTERVALS as _REFRESH_INTERVALS
     CHART_TYPES = _CHART_TYPES
     REFRESH_CHOICES = _REFRESH_INTERVALS
+    DEFAULT_CHART_WIDTH = 640
+    DEFAULT_CHART_HEIGHT = 360
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='dashboard_charts')
     dashboard = models.ForeignKey(Dashboard, on_delete=models.CASCADE, related_name='charts', null=True, blank=True)
@@ -1025,6 +1027,14 @@ class DashboardChart(models.Model):
     query = models.TextField()
     chart_type = models.CharField(max_length=20, choices=CHART_TYPES, default='bar')
     auto_refresh = models.IntegerField(choices=REFRESH_CHOICES, default=0, help_text='Auto-refresh interval in seconds')
+    chart_width = models.PositiveIntegerField(
+        default=DEFAULT_CHART_WIDTH,
+        help_text='Width of the chart card in pixels'
+    )
+    chart_height = models.PositiveIntegerField(
+        default=DEFAULT_CHART_HEIGHT,
+        help_text='Height of the chart card in pixels'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     order = models.IntegerField(default=0)

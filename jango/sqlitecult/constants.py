@@ -81,6 +81,14 @@ REFRESH_INTERVALS = [
     (3600, '1 hour'),
 ]
 
+# Dashboard chart width options (12-column grid)
+CHART_WIDTHS = [
+    (4, 'Small (1/3 width)'),
+    (6, 'Medium (1/2 width)'),
+    (8, 'Wide (2/3 width)'),
+    (12, 'Full width'),
+]
+
 # Database file extensions
 DB_EXTENSIONS = ('.db',)
 

@@ -50,7 +50,7 @@
 {% if charts %}
 <div class="charts-grid">
     {% for chart in charts %}
-    <div class="chart-card" data-chart-id="{{ chart.id }}" data-auto-refresh="{{ chart.auto_refresh }}">
+    <div class="chart-card" style="width: {{ chart.chart_width|default:640 }}px; height: {{ chart.chart_height|default:360 }}px;" data-chart-id="{{ chart.id }}" data-auto-refresh="{{ chart.auto_refresh }}" data-resize-url="{% url 'resize_chart' chart.id %}">
         <div class="chart-card-header">
             <span class="chart-card-title">
                 {{ chart.title }}
@@ -93,6 +93,11 @@
         <div class="chart-card-body">
             <canvas id="chart-{{ chart.id }}"></canvas>
         </div>
+        <button type="button" class="chart-resize-handle" aria-label="Resize chart" title="Drag to resize chart">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
     </div>
     {% endfor %}
 </div>
@@ -113,6 +118,8 @@
 {% block extra_js %}
 <script>
 const chartInstances = {};
+let chartResizeObserver = null;
+const chartResizeSaveTimers = {};
 const chartColors = [
     'rgba(37, 99, 235, 0.8)',
     'rgba(22, 163, 74, 0.8)',
@@ -132,6 +139,143 @@ function getChartColors(count) {
         colors.push(chartColors[i % chartColors.length]);
     }
     return colors;
+}
+
+function getCsrfToken() {
+    const csrfCookie = document.cookie
+        .split('; ')
+        .find(cookie => cookie.startsWith('csrftoken='));
+
+    return csrfCookie ? decodeURIComponent(csrfCookie.split('=')[1]) : '';
+}
+
+function scheduleChartResize(chartId) {
+    if (!chartInstances[chartId]) return;
+
+    requestAnimationFrame(() => {
+        if (chartInstances[chartId]) {
+            chartInstances[chartId].resize();
+        }
+    });
+}
+
+function persistChartSize(card) {
+    const chartId = card.dataset.chartId;
+    const resizeUrl = card.dataset.resizeUrl;
+    if (!resizeUrl) return;
+
+    const payload = {
+        width: Math.round(card.offsetWidth),
+        height: Math.round(card.offsetHeight),
+    };
+
+    fetch(resizeUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify(payload),
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                console.error('Failed to save chart size:', data.error || 'Unknown error');
+                return;
+            }
+
+            card.style.width = `${data.chart_width}px`;
+            card.style.height = `${data.chart_height}px`;
+            scheduleChartResize(chartId);
+        })
+        .catch(error => console.error('Failed to save chart size:', error));
+}
+
+function queueChartSizeSave(card) {
+    const chartId = card.dataset.chartId;
+
+    if (chartResizeSaveTimers[chartId]) {
+        clearTimeout(chartResizeSaveTimers[chartId]);
+    }
+
+    chartResizeSaveTimers[chartId] = setTimeout(() => {
+        persistChartSize(card);
+        delete chartResizeSaveTimers[chartId];
+    }, 250);
+}
+
+function setupChartResizeHandles() {
+    document.querySelectorAll('.chart-card').forEach(card => {
+        const handle = card.querySelector('.chart-resize-handle');
+        if (!handle) return;
+
+        handle.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (handle.setPointerCapture) {
+                handle.setPointerCapture(event.pointerId);
+            }
+
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startWidth = card.offsetWidth;
+            const startHeight = card.offsetHeight;
+            const parentWidth = card.parentElement ? card.parentElement.clientWidth : window.innerWidth;
+
+            card.classList.add('is-resizing');
+
+            const onPointerMove = moveEvent => {
+                const nextWidth = Math.max(320, Math.min(parentWidth, startWidth + (moveEvent.clientX - startX)));
+                const nextHeight = Math.max(260, startHeight + (moveEvent.clientY - startY));
+
+                card.style.width = `${nextWidth}px`;
+                card.style.height = `${nextHeight}px`;
+                scheduleChartResize(card.dataset.chartId);
+            };
+
+            const onPointerUp = () => {
+                document.removeEventListener('pointermove', onPointerMove);
+                document.removeEventListener('pointerup', onPointerUp);
+                card.classList.remove('is-resizing');
+
+                if (handle.releasePointerCapture) {
+                    handle.releasePointerCapture(event.pointerId);
+                }
+
+                queueChartSizeSave(card);
+            };
+
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp, { once: true });
+        });
+    });
+}
+
+function setupChartResizeObserver() {
+    if (chartResizeObserver) {
+        chartResizeObserver.disconnect();
+    }
+
+    if (typeof ResizeObserver === 'undefined') {
+        window.addEventListener('resize', () => {
+            Object.keys(chartInstances).forEach(chartId => scheduleChartResize(chartId));
+        });
+        return;
+    }
+
+    chartResizeObserver = new ResizeObserver(entries => {
+        entries.forEach(entry => {
+            const card = entry.target;
+            if (!card) return;
+
+            scheduleChartResize(card.dataset.chartId);
+        });
+    });
+
+    document.querySelectorAll('.chart-card').forEach(chartCard => {
+        chartResizeObserver.observe(chartCard);
+    });
 }
 
 function renderChart(chartId, chartType, columns, data) {
@@ -208,6 +352,8 @@ function renderChart(chartId, chartType, columns, data) {
             }
         }
     });
+
+    scheduleChartResize(chartId);
 }
 
 function refreshChart(chartId) {
@@ -236,6 +382,9 @@ function refreshChart(chartId) {
 
 // Load all charts on page load
 document.addEventListener('DOMContentLoaded', function() {
+    setupChartResizeHandles();
+    setupChartResizeObserver();
+
     {% for chart in charts %}
     refreshChart({{ chart.id }});
     {% endfor %}
@@ -268,6 +417,11 @@ function setupAutoRefresh() {
 // Clean up intervals when leaving page
 window.addEventListener('beforeunload', function() {
     Object.values(autoRefreshIntervals).forEach(interval => clearInterval(interval));
+    Object.values(chartResizeSaveTimers).forEach(timer => clearTimeout(timer));
+
+    if (chartResizeObserver) {
+        chartResizeObserver.disconnect();
+    }
 });
 </script>
 {% endblock %}
