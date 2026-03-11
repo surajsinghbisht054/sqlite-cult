@@ -68,6 +68,9 @@ CHART_TYPES = [
     ('doughnut', 'Doughnut Chart'),
     ('polarArea', 'Polar Area Chart'),
     ('radar', 'Radar Chart'),
+    ('funnel', 'Funnel Chart'),
+    ('number', 'Number Card'),
+    ('table', 'Table Card'),
 ]
 
 # Auto-refresh intervals (in seconds)

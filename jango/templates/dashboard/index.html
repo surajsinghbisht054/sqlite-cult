@@ -52,19 +52,21 @@
     {% for chart in charts %}
     <div class="chart-card" style="width: {{ chart.chart_width|default:640 }}px; height: {{ chart.chart_height|default:360 }}px;" data-chart-id="{{ chart.id }}" data-auto-refresh="{{ chart.auto_refresh }}" data-resize-url="{% url 'resize_chart' chart.id %}">
         <div class="chart-card-header">
-            <span class="chart-card-title">
-                {{ chart.title }}
-                <span class="chart-type-badge">{{ chart.get_chart_type_display }}</span>
+            <div class="chart-card-title">
+                <span class="chart-card-name">{{ chart.title }}</span>
+                <div class="chart-card-meta">
+                    <span class="chart-type-badge">{{ chart.get_chart_type_display }}</span>
                 {% if chart.auto_refresh %}
-                <span class="auto-refresh-badge" title="Auto-refresh: {{ chart.get_auto_refresh_display }}">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="23 4 23 10 17 10"></polyline>
-                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                    </svg>
-                    {{ chart.get_auto_refresh_display }}
-                </span>
+                    <span class="auto-refresh-badge" title="Auto-refresh: {{ chart.get_auto_refresh_display }}">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        {{ chart.get_auto_refresh_display }}
+                    </span>
                 {% endif %}
-            </span>
+                </div>
+            </div>
             <div class="chart-card-actions">
                 <button class="btn-icon" onclick="refreshChart({{ chart.id }})" title="Refresh">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -98,6 +100,7 @@
             <span></span>
             <span></span>
         </button>
+        <span class="chart-resize-label">Drag to resize</span>
     </div>
     {% endfor %}
 </div>
@@ -139,6 +142,150 @@ function getChartColors(count) {
         colors.push(chartColors[i % chartColors.length]);
     }
     return colors;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getChartBody(chartId) {
+    return document.querySelector(`.chart-card[data-chart-id="${chartId}"] .chart-card-body`);
+}
+
+function renderChartError(chartId, message) {
+    const chartBody = getChartBody(chartId);
+    if (!chartBody) return;
+
+    chartBody.innerHTML = `
+        <div class="chart-error">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>${escapeHtml(message)}</span>
+        </div>`;
+}
+
+function renderNumberCard(chartId, columns, data) {
+    const chartBody = getChartBody(chartId);
+    if (!chartBody || !data.length || !columns.length) return;
+
+    const firstRow = data[0];
+    const hasLabelColumn = columns.length > 1;
+    const valueColumn = hasLabelColumn ? columns[1] : columns[0];
+    const label = hasLabelColumn ? firstRow[columns[0]] : columns[0];
+    const value = firstRow[valueColumn];
+    const caption = hasLabelColumn ? valueColumn : `${data.length} row${data.length === 1 ? '' : 's'}`;
+
+    chartBody.innerHTML = `
+        <div class="chart-stat-card">
+            <div class="chart-stat-label">${escapeHtml(label)}</div>
+            <div class="chart-stat-value">${escapeHtml(value)}</div>
+            <div class="chart-stat-caption">${escapeHtml(caption)}</div>
+        </div>`;
+}
+
+function renderTableCard(chartId, columns, data) {
+    const chartBody = getChartBody(chartId);
+    if (!chartBody || !columns.length) return;
+
+    chartBody.innerHTML = `
+        <div class="chart-table-wrapper">
+            <table class="chart-table">
+                <thead>
+                    <tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr>
+                </thead>
+                <tbody>
+                    ${data.map(row => `
+                        <tr>
+                            ${columns.map(column => `<td>${escapeHtml(row[column])}</td>`).join('')}
+                        </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+}
+
+function renderFunnelCard(chartId, columns, data) {
+    const chartBody = getChartBody(chartId);
+    if (!chartBody || columns.length < 2) return;
+
+    const rows = data
+        .map(row => ({
+            label: row[columns[0]],
+            value: parseFloat(row[columns[1]]) || 0,
+        }))
+        .filter(row => row.value >= 0)
+        .sort((a, b) => b.value - a.value);
+
+    if (!rows.length) {
+        renderChartError(chartId, 'Funnel chart requires numeric values in the second column.');
+        return;
+    }
+
+    const maxValue = Math.max(...rows.map(row => row.value), 1);
+    const minWidth = 44;
+    const maxWidth = 92;
+
+    chartBody.innerHTML = `
+        <div class="chart-funnel">
+            ${rows.map((row, index) => {
+                const ratio = row.value / maxValue;
+                const width = minWidth + ((maxWidth - minWidth) * ratio);
+                const color = chartColors[index % chartColors.length].replace('0.8', '0.95');
+                const conversion = `${((ratio || 0) * 100).toFixed(1)}% of top stage`;
+                return `
+                    <div class="chart-funnel-step" style="width: ${width}%; background: ${color};">
+                        <div class="chart-funnel-content">
+                            <div class="chart-funnel-label">${escapeHtml(row.label)}</div>
+                            <div class="chart-funnel-value">${escapeHtml(row.value)}</div>
+                            <div class="chart-funnel-meta">${escapeHtml(conversion)}</div>
+                        </div>
+                    </div>`;
+            }).join('')}
+        </div>`;
+}
+
+function buildDatasets(chartType, columns, data) {
+    const labels = data.map(row => row[columns[0]]);
+    const datasets = [];
+
+    if (chartType === 'pie' || chartType === 'doughnut' || chartType === 'polarArea') {
+        datasets.push({
+            data: data.map(row => parseFloat(row[columns[1]]) || 0),
+            backgroundColor: getChartColors(data.length),
+            borderWidth: 1
+        });
+    } else if (chartType === 'radar') {
+        for (let i = 1; i < columns.length; i++) {
+            datasets.push({
+                label: columns[i],
+                data: data.map(row => parseFloat(row[columns[i]]) || 0),
+                backgroundColor: chartColors[(i - 1) % chartColors.length].replace('0.8', '0.2'),
+                borderColor: chartColors[(i - 1) % chartColors.length],
+                borderWidth: 2,
+                pointBackgroundColor: chartColors[(i - 1) % chartColors.length],
+            });
+        }
+    } else {
+        for (let i = 1; i < columns.length; i++) {
+            datasets.push({
+                label: columns[i],
+                data: data.map(row => parseFloat(row[columns[i]]) || 0),
+                backgroundColor: chartColors[(i - 1) % chartColors.length],
+                borderColor: chartColors[(i - 1) % chartColors.length],
+                borderWidth: 2,
+                tension: 0.1
+            });
+        }
+    }
+
+    return { labels, datasets };
 }
 
 function getCsrfToken() {
@@ -279,66 +426,45 @@ function setupChartResizeObserver() {
 }
 
 function renderChart(chartId, chartType, columns, data) {
-    const canvas = document.getElementById('chart-' + chartId);
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    
-    // Destroy existing chart if any
+    const chartBody = getChartBody(chartId);
+    if (!chartBody) return;
+
     if (chartInstances[chartId]) {
         chartInstances[chartId].destroy();
+        delete chartInstances[chartId];
     }
-    
-    if (!data || data.length === 0 || columns.length < 2) {
-        canvas.parentElement.innerHTML = `
-            <div class="chart-error">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <span>No data or insufficient columns.<br>Query must return at least 2 columns.</span>
-            </div>`;
+
+    if (!data || data.length === 0 || columns.length === 0) {
+        renderChartError(chartId, 'No data returned.');
         return;
     }
-    
-    // First column is labels, rest are values
-    const labels = data.map(row => row[columns[0]]);
-    const datasets = [];
-    
-    if (chartType === 'pie' || chartType === 'doughnut' || chartType === 'polarArea') {
-        // For pie/doughnut/polarArea, use second column as values
-        datasets.push({
-            data: data.map(row => parseFloat(row[columns[1]]) || 0),
-            backgroundColor: getChartColors(data.length),
-            borderWidth: 1
-        });
-    } else if (chartType === 'radar') {
-        // For radar, each value column becomes a dataset
-        for (let i = 1; i < columns.length; i++) {
-            datasets.push({
-                label: columns[i],
-                data: data.map(row => parseFloat(row[columns[i]]) || 0),
-                backgroundColor: chartColors[(i - 1) % chartColors.length].replace('0.8', '0.2'),
-                borderColor: chartColors[(i - 1) % chartColors.length],
-                borderWidth: 2,
-                pointBackgroundColor: chartColors[(i - 1) % chartColors.length],
-            });
-        }
-    } else {
-        // For bar/line, each value column becomes a dataset
-        for (let i = 1; i < columns.length; i++) {
-            datasets.push({
-                label: columns[i],
-                data: data.map(row => parseFloat(row[columns[i]]) || 0),
-                backgroundColor: chartColors[(i - 1) % chartColors.length],
-                borderColor: chartColors[(i - 1) % chartColors.length],
-                borderWidth: 2,
-                tension: 0.1
-            });
-        }
+
+    if (chartType === 'number') {
+        renderNumberCard(chartId, columns, data);
+        return;
     }
-    
+
+    if (chartType === 'table') {
+        renderTableCard(chartId, columns, data);
+        return;
+    }
+
+    if (chartType === 'funnel') {
+        renderFunnelCard(chartId, columns, data);
+        return;
+    }
+
+    if (columns.length < 2) {
+        renderChartError(chartId, 'Query must return at least 2 columns for graph charts.');
+        return;
+    }
+
+    chartBody.innerHTML = `<canvas id="chart-${chartId}"></canvas>`;
+    const canvas = document.getElementById('chart-' + chartId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const { labels, datasets } = buildDatasets(chartType, columns, data);
+
     chartInstances[chartId] = new Chart(ctx, {
         type: chartType,
         data: { labels, datasets },
@@ -363,18 +489,7 @@ function refreshChart(chartId) {
             if (data.success) {
                 renderChart(chartId, data.chart_type, data.columns, data.data);
             } else {
-                const canvas = document.getElementById('chart-' + chartId);
-                if (canvas) {
-                    canvas.parentElement.innerHTML = `
-                        <div class="chart-error">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="12" y1="8" x2="12" y2="12"></line>
-                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                            </svg>
-                            <span>${data.error}</span>
-                        </div>`;
-                }
+                renderChartError(chartId, data.error);
             }
         })
         .catch(err => console.error('Error refreshing chart:', err));

@@ -4,6 +4,7 @@ from django.urls import reverse
 
 import json
 
+from .constants import CHART_TYPES
 from .models import Dashboard, DashboardChart
 
 
@@ -58,3 +59,10 @@ class DashboardChartResizeTests(TestCase):
         response = self.client.get(reverse('dashboard_detail', args=[self.dashboard.id]))
 
         self.assertContains(response, 'style="width: 820px; height: 480px;"')
+
+    def test_chart_type_choices_include_number_and_table(self):
+        chart_type_values = {value for value, _label in CHART_TYPES}
+
+        self.assertIn('number', chart_type_values)
+        self.assertIn('table', chart_type_values)
+        self.assertIn('funnel', chart_type_values)
